@@ -44,3 +44,9 @@ Not an autonomous agent. Structured numeric signals plus a minimal course type a
 
 ## 7. G1 security gate (BLOCKING)
 Local-only middleware is a guardrail, not user login or tenant isolation. Do not expose on the network or use children's real identifiable data until identity/RBAC, lawful basis/guardian handling, DPIA/security reviews where applicable, import authorization, audit logging, backup/restore, retention and deletion have been implemented and independently tested.
+
+## 8. G0.3 fact lineage (addendum)
+
+`learners` → `packages` → `renewal_contracts` → `cash_events` (`refund_of` explicitly links refunds to a payment). Immutable new contract and event rows, idempotent replay, batch atomicity. Legacy `renewals` continues as a **separate, non-equivalent** source, preventing unsupported duplicate attribution.
+
+`cohorts` → `renewal_cohort_members`: frozen store/day, source package uniqueness, fixed household arm, 45-day observation plus 14-day refund grace. Frozen events preserve the denominator; `recompute` updates operational opportunities only. Summaries are **descriptive and non-causal**. See `docs/RELEASE_G03.md`.
