@@ -1,3 +1,2 @@
-<PARSED TEXT FOR SHEET: 1 / 1 TABS
-TAB NAME: samples__renewals.csv>index,renewal_id,learner_id,source_package_id,paid_on,amount_cny,status
-0,R001,L001,PK001,2026-10-15,2850.0,paid
+﻿renewal_id,learner_id,source_package_id,paid_on,amount_cny,status
+R001,L001,PK001,2026-10-15,2850.00,paid
