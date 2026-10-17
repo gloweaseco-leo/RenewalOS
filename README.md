@@ -46,3 +46,4 @@ Read `docs/RELEASE_G03.md` (current delivery), `docs/ARCHITECTURE.md`, and `docs
 - Visit **经营验证** and freeze today's eligible cohort for a store. The control/rules/AI arms are snapshotted at enrollment. No retrospective freeze or auto-claimed uplift.
 - Open an opportunity and request its source-package lifecycle timeline. A payment is a fact; an AI-caused renewal is not yet established.
 - Unit/integration verification: `python -m pytest -q` (24 tests); `node --check static/app.js`.
+
