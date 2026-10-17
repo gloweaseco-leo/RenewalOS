@@ -1,0 +1,95 @@
+"""Local SQLite prototype. Deliberately not a production multi-tenant datastore."""
+import os
+import sqlite3
+from pathlib import Path
+
+DB_DEFAULT = Path(__file__).resolve().parent.parent / 'renewalos_local.db'
+
+DDL = """
+PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS learners (
+ learner_id TEXT PRIMARY KEY, family_id TEXT NOT NULL, guardian_alias TEXT NOT NULL,
+ store_id TEXT NOT NULL, contact_consent INTEGER NOT NULL CHECK(contact_consent IN (0,1))
+);
+CREATE TABLE IF NOT EXISTS packages (
+ package_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL REFERENCES learners(learner_id),
+ course_type TEXT NOT NULL, purchased_on TEXT NOT NULL, expires_on TEXT NOT NULL,
+ purchased_sessions INTEGER NOT NULL CHECK(purchased_sessions>0),
+ remaining_sessions INTEGER NOT NULL CHECK(remaining_sessions>=0),
+ price_cents INTEGER NOT NULL CHECK(price_cents>=0)
+);
+CREATE TABLE IF NOT EXISTS attendance (
+ event_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL REFERENCES learners(learner_id),
+ session_date TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('present','absent','excused'))
+);
+CREATE TABLE IF NOT EXISTS renewals (
+ renewal_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL REFERENCES learners(learner_id),
+ source_package_id TEXT NOT NULL REFERENCES packages(package_id), paid_on TEXT NOT NULL,
+ amount_cents INTEGER NOT NULL CHECK(amount_cents>=0),
+ status TEXT NOT NULL CHECK(status IN ('paid','refunded','void'))
+);
+CREATE TABLE IF NOT EXISTS opportunities (
+ opportunity_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL REFERENCES learners(learner_id),
+ package_id TEXT NOT NULL UNIQUE REFERENCES packages(package_id),
+ signals_json TEXT NOT NULL, priority INTEGER NOT NULL,
+ reason TEXT NOT NULL, rule_advice TEXT NOT NULL,
+ updated_at TEXT NOT NULL,
+ is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
+ closed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS experiment_assignments (
+ family_key TEXT PRIMARY KEY,
+ store_id TEXT NOT NULL,
+ family_id TEXT NOT NULL,
+ arm TEXT NOT NULL CHECK(arm IN ('control','rules','ai')),
+ assigned_on TEXT NOT NULL,
+ UNIQUE(store_id, family_id)
+);
+CREATE TABLE IF NOT EXISTS followups (
+ followup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+ opportunity_id TEXT NOT NULL REFERENCES opportunities(opportunity_id),
+ owner TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('planned','contacted','no_response','not_suitable','closed')),
+ note TEXT NOT NULL, logged_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ai_advice (
+ opportunity_id TEXT PRIMARY KEY REFERENCES opportunities(opportunity_id),
+ advice TEXT NOT NULL, source TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_packages_learner ON packages(learner_id);
+CREATE INDEX IF NOT EXISTS ix_att_learner_date ON attendance(learner_id,session_date);
+CREATE INDEX IF NOT EXISTS ix_renewals_package ON renewals(source_package_id,paid_on);
+CREATE INDEX IF NOT EXISTS ix_opportunity_priority ON opportunities(priority);
+"""
+
+def connect(path=None):
+    target = str(path or os.getenv('RENEWAL_DB_PATH') or DB_DEFAULT)
+    c = sqlite3.connect(target, timeout=15, check_same_thread=False)
+    c.row_factory = sqlite3.Row
+    c.execute('PRAGMA foreign_keys=ON')
+    c.execute('PRAGMA busy_timeout=15000')
+    return c
+
+def initialize(path=None):
+    with connect(path) as con:
+        con.executescript(DDL)
+        columns = {r['name'] for r in con.execute('PRAGMA table_info(opportunities)')}
+        if 'is_active' not in columns:
+            con.execute('ALTER TABLE opportunities ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1')
+        if 'closed_at' not in columns:
+            con.execute('ALTER TABLE opportunities ADD COLUMN closed_at TEXT')
+        assignments = {r['name'] for r in con.execute('PRAGMA table_info(experiment_assignments)')}
+        # V0.1 used family_id as a global key. Migrate without deleting records.
+        if 'family_key' not in assignments:
+            con.execute('ALTER TABLE experiment_assignments RENAME TO experiment_assignments_v01')
+            con.execute("""CREATE TABLE experiment_assignments (
+                family_key TEXT PRIMARY KEY, store_id TEXT NOT NULL, family_id TEXT NOT NULL,
+                arm TEXT NOT NULL CHECK(arm IN ('control','rules','ai')),
+                assigned_on TEXT NOT NULL, UNIQUE(store_id,family_id))""")
+            con.execute("""INSERT OR IGNORE INTO experiment_assignments
+                (family_key,store_id,family_id,arm,assigned_on)
+                SELECT DISTINCT l.store_id || ':' || l.family_id,l.store_id,l.family_id,
+                       a.arm,a.assigned_on
+                FROM experiment_assignments_v01 a
+                JOIN learners l ON l.family_id=a.family_id""")
+            con.execute('DROP TABLE experiment_assignments_v01')
+        con.execute('CREATE INDEX IF NOT EXISTS ix_active_opportunity ON opportunities(is_active,priority)')
