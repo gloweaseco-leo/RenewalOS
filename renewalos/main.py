@@ -14,13 +14,17 @@ from .db import connect,initialize
 from .core import recompute, list_opportunities, list_followups, report, now_iso
 from .demo import load_demo
 from .ai import suggest,AIUnavailable
+from .facts import (freeze_cohort,list_cohorts,cycle_timeline,import_contracts,
+                    import_cash_events,BusinessRuleError)
 
 ROOT=Path(__file__).resolve().parent.parent
 SCHEMAS={
  "learners":{"learner_id","family_id","guardian_alias","store_id","contact_consent"},
  "packages":{"package_id","learner_id","course_type","purchased_on","expires_on","purchased_sessions","remaining_sessions","price_cny"},
  "attendance":{"event_id","learner_id","session_date","status"},
- "renewals":{"renewal_id","learner_id","source_package_id","paid_on","amount_cny","status"}
+ "renewals":{"renewal_id","learner_id","source_package_id","paid_on","amount_cny","status"},
+ "contracts":{"contract_id","learner_id","source_package_id","signed_on","contracted_amount_cny"},
+ "cash_events":{"event_id","contract_id","event_on","kind","amount_cny","refund_of"}
 }
 
 def cents(value):
@@ -39,6 +43,7 @@ def convert(kind,r):
     if kind=="learners":
         if r["contact_consent"].lower() not in ("yes","no"):
             raise ValueError("contact_consent 只允许 yes/no")
+        if ':' in r['family_id'] or ':' in r['store_id']:raise ValueError('家庭/门店ID不得包含冒号')
         return (r["learner_id"],r["family_id"],r["guardian_alias"],r["store_id"],int(r["contact_consent"].lower()=="yes"))
     if kind=="packages":
         purchased=str_date(r["purchased_on"]); expires=str_date(r["expires_on"])
@@ -52,6 +57,15 @@ def convert(kind,r):
     if kind=="renewals":
         if r["status"] not in ("paid","refunded","void"):raise ValueError("交易状态不支持")
         return (r["renewal_id"],r["learner_id"],r["source_package_id"],str_date(r["paid_on"]),cents(r["amount_cny"]),r["status"])
+    if kind=="contracts":
+        return (r["contract_id"],r["learner_id"],r["source_package_id"],str_date(r["signed_on"]),cents(r["contracted_amount_cny"]))
+    if kind=="cash_events":
+        if r["kind"] not in ("payment","refund"):raise ValueError("交易类型只能为 payment/refund")
+        refund_of=r["refund_of"] or None
+        if (r["kind"]=="refund")!=bool(refund_of):raise ValueError("退款必须填写原付款ID，付款不得填写")
+        value=cents(r["amount_cny"])
+        if value==0:raise ValueError("交易金额必须大于零")
+        return (r["event_id"],r["contract_id"],str_date(r["event_on"]),r["kind"],value,refund_of)
     raise ValueError("未知数据类型")
 
 @asynccontextmanager
@@ -59,7 +73,7 @@ async def lifespan(app):
     initialize()
     yield
 
-app=FastAPI(title="RenewalOS Demo",version="0.1.0",lifespan=lifespan,
+app=FastAPI(title="RenewalOS Demo",version="0.3.0",lifespan=lifespan,
     docs_url=None,redoc_url=None,openapi_url=None)
 
 @app.middleware("http")
@@ -77,6 +91,9 @@ async def demo_local_only(request:Request, call_next):
             if parsed.hostname not in {"localhost","127.0.0.1","::1"} or parsed.scheme not in {"http","https"}:
                 return JSONResponse({"detail":"禁止跨站写入"},status_code=403)
     return await call_next(request)
+
+class FreezeRequest(BaseModel):
+    store_id: str=Field(min_length=1,max_length=100)
 
 class Followup(BaseModel):
     opportunity_id:str=Field(min_length=2,max_length=120)
@@ -106,6 +123,19 @@ def followup_history(opportunity_id: str):
 @app.get("/api/report")
 def metrics():return report()
 
+@app.post("/api/cohorts/freeze")
+def freeze(data:FreezeRequest):
+    try:return freeze_cohort(data.store_id)
+    except BusinessRuleError as e:raise HTTPException(422,str(e)) from e
+
+@app.get("/api/cohorts")
+def cohorts():return {"items":list_cohorts()}
+
+@app.get("/api/cycles/{package_id}/timeline")
+def timeline(package_id:str):
+    try:return cycle_timeline(package_id)
+    except BusinessRuleError as e:raise HTTPException(404,str(e)) from e
+
 @app.post("/api/import/{kind}")
 async def import_csv(kind:str,request:Request):
     if kind not in SCHEMAS:raise HTTPException(404,"不支持此类型")
@@ -123,9 +153,16 @@ async def import_csv(kind:str,request:Request):
             if None in r or any(v is None or len(v)>256 for v in r.values()):
                 raise ValueError(f"第{row_num}行有缺项或字段过长")
             vals=convert(kind,{k:v.strip() for k,v in r.items()})
-            if not all(v is not None and v!="" for v in vals):raise ValueError(f"第{row_num}行包含空值")
+            if not all(v is not None and v!="" for v in vals if kind!="cash_events"):
+                raise ValueError(f"第{row_num}行包含空值")
+            if kind=="cash_events" and not all(v is not None and v!="" for v in vals[:5]):
+                raise ValueError(f"第{row_num}行包含空值")
             items.append(vals)
         if not items: raise ValueError("CSV无数据行")
+        if kind=="contracts":
+            return {"kind":kind,"imported":import_contracts(items),"message":"合同事实已导入（重传相同行幂等；冲突不可覆盖）。"}
+        if kind=="cash_events":
+            return {"kind":kind,"imported":import_cash_events(items),"message":"真实付款/退款事件已关联合同；退款必须指向原付款。"}
         columns={
           "learners":"learner_id,family_id,guardian_alias,store_id,contact_consent",
           "packages":"package_id,learner_id,course_type,purchased_on,expires_on,purchased_sessions,remaining_sessions,price_cents",
@@ -136,6 +173,11 @@ async def import_csv(kind:str,request:Request):
         rest=[c for c in columns.split(",") if c!=pk]
         q=f"INSERT INTO {kind}({columns}) VALUES({marks}) ON CONFLICT({pk}) DO UPDATE SET "+",".join(f"{c}=excluded.{c}" for c in rest)
         with connect() as con:
+            if kind == "learners":
+                for value in items:
+                    existing=con.execute("SELECT * FROM learners WHERE learner_id=?",(value[0],)).fetchone()
+                    if existing and (existing['store_id']!=value[3] or existing['family_id']!=value[1]):
+                        raise ValueError("已有学员的家庭或门店归属不可变更，请先核实源数据")
             if kind == "renewals":
                 for value in items:
                     package = con.execute("SELECT learner_id FROM packages WHERE package_id=?", (value[2],)).fetchone()
@@ -146,6 +188,12 @@ async def import_csv(kind:str,request:Request):
                     existing = con.execute("SELECT learner_id FROM packages WHERE package_id=?", (value[0],)).fetchone()
                     if existing and existing["learner_id"] != value[1]:
                         raise ValueError("已有课包不允许变更学员归属")
+                    frozen=con.execute("SELECT 1 FROM renewal_cohort_members WHERE source_package_id=?",(value[0],)).fetchone()
+                    if frozen:
+                        original=con.execute("SELECT * FROM packages WHERE package_id=?",(value[0],)).fetchone()
+                        # Only freeze immutable baseline facts; remaining sessions can evolve during service.
+                        if (original['learner_id'],original['purchased_on'],original['expires_on'],original['purchased_sessions'],original['price_cents']) != (value[1],value[3],value[4],value[5],value[7]):
+                            raise ValueError("已冻结队列的课包基线不得改写")
             con.executemany(q,items)
         # We intentionally do not re-compute automatically after every import;
         # importing dimensions across CSVs may have partial referential coverage.
@@ -171,7 +219,7 @@ def make_ai_advice(opportunity_id:str):
     with connect() as con:
         row=con.execute("""SELECT o.signals_json,p.course_type,a.arm FROM opportunities o
          JOIN packages p ON p.package_id=o.package_id JOIN learners l ON o.learner_id=l.learner_id
-         JOIN experiment_assignments a ON a.family_id=l.family_id WHERE o.opportunity_id=? AND o.is_active=1""",(opportunity_id,)).fetchone()
+         JOIN experiment_assignments a ON a.family_id=l.family_id AND a.store_id=l.store_id WHERE o.opportunity_id=? AND o.is_active=1""",(opportunity_id,)).fetchone()
         if not row:raise HTTPException(404,"机会不存在")
         if row["arm"]!="ai":raise HTTPException(403,"只有AI实验组可使用模型建议，避免实验串组。")
         import json
