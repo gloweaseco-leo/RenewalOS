@@ -69,12 +69,16 @@ def recompute(path=None, today=None):
         for r in con.execute('SELECT * FROM attendance'):
             attendance.setdefault(r['learner_id'], []).append(r)
         paid = {r['source_package_id'] for r in con.execute('''
-           SELECT source_package_id FROM renewals GROUP BY source_package_id
+           SELECT source_package_id FROM renewals WHERE paid_on <= ? GROUP BY source_package_id
            HAVING SUM(CASE WHEN status='paid' THEN amount_cents
-                           WHEN status='refunded' THEN -amount_cents ELSE 0 END)>0''')}
+                           WHEN status='refunded' THEN -amount_cents ELSE 0 END)>0''', (today.isoformat(),))}
+        linked_paid={r['source_package_id'] for r in con.execute("""
+           SELECT rc.source_package_id FROM renewal_contracts rc JOIN cash_events e ON rc.contract_id=e.contract_id
+           WHERE e.event_on <= ? GROUP BY rc.source_package_id
+           HAVING SUM(CASE WHEN e.kind='payment' THEN e.amount_cents ELSE -e.amount_cents END)>0""", (today.isoformat(),))}
         accepted = []
         for pkg in con.execute('SELECT * FROM packages'):
-            if pkg['package_id'] in paid:
+            if pkg['package_id'] in paid or pkg['package_id'] in linked_paid:
                 continue
             learner = learners.get(pkg['learner_id'])
             if learner is None:
