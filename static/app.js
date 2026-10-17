@@ -4,7 +4,9 @@ const SCHEMAS={
   learners:'learner_id, family_id, guardian_alias, store_id, contact_consent (yes/no)',
   packages:'package_id, learner_id, course_type, purchased_on (YYYY-MM-DD), expires_on, purchased_sessions, remaining_sessions, price_cny',
   attendance:'event_id, learner_id, session_date (YYYY-MM-DD), status (present / absent / excused)',
-  renewals:'renewal_id, learner_id, source_package_id, paid_on (YYYY-MM-DD), amount_cny, status (paid / refunded / void)'
+  renewals:'renewal_id, learner_id, source_package_id, paid_on (YYYY-MM-DD), amount_cny, status (paid / refunded / void)',
+  contracts:'contract_id, learner_id, source_package_id, signed_on (YYYY-MM-DD), contracted_amount_cny',
+  cash_events:'event_id, contract_id, event_on (YYYY-MM-DD), kind (payment / refund), amount_cny, refund_of (refund must reference payment event; payment blank)'
 };
 const fmtMoney=(n)=> n==null?'—':'¥'+Number(n).toLocaleString('zh-CN',{maximumFractionDigits:2});
 const el=(tag, text, cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=String(text);if(cls)e.className=cls;return e;};
@@ -25,19 +27,39 @@ function renderDetail(){let r=entries.find(x=>x.opportunity_id===selected);let n
     let b=el('button','请求真实AI建议','button light');b.style.marginTop='13px';b.disabled=!aiConfigured;b.title=aiConfigured?'真实模型API已经配置':'未配置真实模型API';b.addEventListener('click',async()=>{b.disabled=true;try{await call('/api/opportunities/'+encodeURIComponent(r.opportunity_id)+'/ai-advice',{method:'POST'});toast('真实模型建议已生成');await refresh();}catch(e){toast(e.message)}finally{b.disabled=!aiConfigured;}});node.append(b);
   }
   node.append(el('div',undefined,'divider'),el('h3','跟进记录 · 仅员工人工执行'));
-  if(r.arm==='control'){node.append(el('div','对照组只保留正常既有服务，不实施本产品额外定向触达。','detail-note'));return;}
+  if(r.arm==='control'){node.append(el('div','对照组只保留正常既有服务，不实施本产品额外定向触达。','detail-note'));attachTimeline(node,r);return;}
   let form=el('form',undefined,'detail-form');let ownerLabel=el('label','责任人'),owner=el('input');owner.placeholder='例如：值班顾问';owner.value=r.last_owner||'';owner.required=true;owner.maxLength=50;ownerLabel.append(owner);
   let statusLabel=el('label','跟进状态'),sel=el('select');[['planned','计划中'],['contacted','已联系'],['no_response','未响应'],['not_suitable','暂不适合营销'],['closed','已结束']].forEach(([v,t])=>{let opt=el('option',t);opt.value=v;sel.append(opt);});statusLabel.append(sel);
   let noteLabel=el('label','结果与下一步','wide'),note=el('textarea');note.placeholder='记录下一步行动，不填写敏感个人信息';note.rows=3;note.maxLength=1000;noteLabel.append(note);
   let submit=el('button','保存跟进记录','button primary');submit.type='submit';submit.className+=' wide';form.append(ownerLabel,statusLabel,noteLabel,submit);
   form.addEventListener('submit',async(e)=>{e.preventDefault();submit.disabled=true;try{await call('/api/followups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({opportunity_id:r.opportunity_id,owner:owner.value,status:sel.value,note:note.value})});toast('跟进记录已保存');await refresh();}catch(x){toast(x.message);}finally{submit.disabled=false;}});
   node.append(form);
+  attachTimeline(node,r);
+}
+function attachTimeline(node,r){
+  let timelineButton=el('button','查看课包→合同→付款/退款时间线','button light');timelineButton.style.marginTop='14px';node.append(timelineButton);
+  let eventsBlock=el('div',undefined,'event-lines');node.append(eventsBlock);
+  timelineButton.addEventListener('click',async()=>{try{
+    const data=await call('/api/cycles/'+encodeURIComponent(r.package_id)+'/timeline');clear(eventsBlock);
+    data.events.forEach(ev=>eventsBlock.append(el('div',ev.event_at+' · '+ev.event_type+' · '+ev.reference_id+(ev.amount_cny!=null?' · '+fmtMoney(ev.amount_cny):''),'event-line')));
+    eventsBlock.append(el('p',data.disclaimer,'small'));
+  }catch(e){toast(e.message);}});
 }
 function renderReport(data){$('netPaid').textContent=fmtMoney(data.net_paid_cny);$('followupEvents').textContent=data.followup_records;$('attributionNote').textContent=data.attribution_note;let holder=$('armBars');clear(holder);const n=Math.max(1,...Object.values(data.arm_family_counts));[['control','正常运营'],['rules','规则辅助'],['ai','AI辅助']].forEach(([arm,name])=>{let line=el('div',undefined,'arm-row');line.append(el('span',name));let track=el('div',undefined,'track');let fill=el('div',undefined,'fill');fill.style.width=(100*data.arm_family_counts[arm]/n)+'%';track.append(fill);line.append(track,el('strong',data.arm_family_counts[arm]+'户'));holder.append(line);});}
-async function refresh(){try{const [data,r,status]=await Promise.all([call('/api/opportunities'),call('/api/report'),call('/api/health')]);entries=data.items;aiConfigured=status.ai_configured;const named=aiConfigured?'真实AI已配置':'规则模式（未配置AI）';$('modelStatus').textContent=named;$('statAI').textContent=aiConfigured?'可调用':'未连接';$('statCount').textContent=entries.length;$('statHigh').textContent=entries.filter(x=>x.priority>=65).length;$('statFollowed').textContent=entries.filter(x=>x.last_status).length;renderList();renderDetail();renderReport(r);}catch(e){toast(e.message);}}
+async function refresh(){try{const [data,r,status,cohorts]=await Promise.all([call('/api/opportunities'),call('/api/report'),call('/api/health'),call('/api/cohorts')]);entries=data.items;aiConfigured=status.ai_configured;const named=aiConfigured?'真实AI已配置':'规则模式（未配置AI）';$('modelStatus').textContent=named;$('statAI').textContent=aiConfigured?'可调用':'未连接';$('statCount').textContent=entries.length;$('statHigh').textContent=entries.filter(x=>x.priority>=65).length;$('statFollowed').textContent=entries.filter(x=>x.last_status).length;renderList();renderDetail();renderReport(r);renderCohorts(cohorts.items);}catch(e){toast(e.message);}}
 document.querySelectorAll('.nav').forEach(n=>n.addEventListener('click',()=>showView(n.dataset.view)));
 $('loadDemo').addEventListener('click',async()=>{if(entries.length&&!confirm('重新载入合成数据会清空本地当前所有导入和跟进记录，确定继续吗？'))return;try{await call('/api/demo/reset',{method:'POST'});selected=null;toast('已载入36名合成学员，所有数据均为模拟');await refresh();}catch(e){toast(e.message);}});
 $('recompute').addEventListener('click',async()=>{try{const r=await call('/api/recompute',{method:'POST'});toast('重新识别完成，得到'+r.opportunities+'条有效机会');await refresh();}catch(e){toast(e.message);}});
+function renderCohorts(cohorts){let container=$('cohortReports');clear(container);if(!cohorts.length){container.append(el('p','尚无已冻结队列；冻结前的机会池不构成实验样本。','small'));return;}
+  cohorts.forEach(c=>{let card=el('div',undefined,'cohort-card');card.append(el('strong',c.store_id+' · '+c.opened_on+' · '+(c.mature?'观察期结束':'观察中')));
+    let detail=el('div',undefined,'cohort-grid');[['control','正常运营'],['rules','规则辅助'],['ai','AI辅助']].forEach(([arm,title])=>{
+      let a=c.arms[arm];detail.append(el('div',title+'：'+a.eligible_families+'户 · 实际净收款'+fmtMoney(a.net_paid_cny),'cohort-arm'));
+    });card.append(detail,el('p',c.attribution_note,'small'));container.append(card);});
+}
+$('freezeCohort').addEventListener('click',async()=>{let store=$('cohortStore').value.trim();if(!store){toast('请输入门店代号');return;}
+  try{const c=await call('/api/cohorts/freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({store_id:store})});
+   toast('冻结完成：'+Object.values(c.arms).reduce((x,a)=>x+a.member_packages,0)+'个合格课包，重复调用不会修改冻结结果');await refresh();
+  }catch(e){toast(e.message);}});
 $('search').addEventListener('input',renderList);$('arm').addEventListener('change',renderList);
 $('importKind').addEventListener('change',()=>{$('schemaText').textContent=SCHEMAS[$('importKind').value];});$('schemaText').textContent=SCHEMAS.learners;
 $('upload').addEventListener('click',async()=>{const file=$('csvFile').files[0];if(!file){toast('先选择CSV文件');return;}if(file.size>2*1024*1024){toast('文件超过2MB');return;}let btn=$('upload');btn.disabled=true;try{let r=await call('/api/import/'+$('importKind').value,{method:'POST',headers:{'Content-Type':'text/csv; charset=utf-8'},body:await file.arrayBuffer()});toast('已导入'+r.imported+'条；全部数据导入后请重新计算');$('importHint').textContent=r.message;}catch(e){toast(e.message)}finally{btn.disabled=false;}});
