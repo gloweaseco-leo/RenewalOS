@@ -58,6 +58,35 @@ CREATE TABLE IF NOT EXISTS ai_advice (
 CREATE INDEX IF NOT EXISTS ix_packages_learner ON packages(learner_id);
 CREATE INDEX IF NOT EXISTS ix_att_learner_date ON attendance(learner_id,session_date);
 CREATE INDEX IF NOT EXISTS ix_renewals_package ON renewals(source_package_id,paid_on);
+
+-- G0.3: Frozen enrollment; only new source packages can join a cohort.
+CREATE TABLE IF NOT EXISTS cohorts (
+ cohort_id TEXT PRIMARY KEY, store_id TEXT NOT NULL, opened_on TEXT NOT NULL,
+ cutoff_on TEXT NOT NULL, refund_grace_until TEXT NOT NULL, frozen_at TEXT NOT NULL,
+ UNIQUE(store_id,opened_on)
+);
+CREATE TABLE IF NOT EXISTS renewal_cohort_members (
+ cohort_id TEXT NOT NULL REFERENCES cohorts(cohort_id),
+ source_package_id TEXT NOT NULL UNIQUE REFERENCES packages(package_id),
+ learner_id TEXT NOT NULL REFERENCES learners(learner_id),
+ family_key TEXT NOT NULL, arm TEXT NOT NULL CHECK(arm IN ('control','rules','ai')),
+ expiry_at_freeze TEXT NOT NULL,
+ PRIMARY KEY(cohort_id,source_package_id)
+);
+-- The new accounting facts are append-only and intentionally separate from legacy renewals.
+CREATE TABLE IF NOT EXISTS renewal_contracts (
+ contract_id TEXT PRIMARY KEY,
+ learner_id TEXT NOT NULL REFERENCES learners(learner_id),
+ source_package_id TEXT NOT NULL UNIQUE REFERENCES packages(package_id),
+ signed_on TEXT NOT NULL, contracted_amount_cents INTEGER NOT NULL CHECK(contracted_amount_cents>0)
+);
+CREATE TABLE IF NOT EXISTS cash_events (
+ event_id TEXT PRIMARY KEY, contract_id TEXT NOT NULL REFERENCES renewal_contracts(contract_id),
+ event_on TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('payment','refund')),
+ amount_cents INTEGER NOT NULL CHECK(amount_cents>0), refund_of TEXT REFERENCES cash_events(event_id)
+);
+CREATE INDEX IF NOT EXISTS ix_cash_contract ON cash_events(contract_id,event_on);
+CREATE INDEX IF NOT EXISTS ix_member_cohort ON renewal_cohort_members(cohort_id,arm);
 CREATE INDEX IF NOT EXISTS ix_opportunity_priority ON opportunities(priority);
 """
 
