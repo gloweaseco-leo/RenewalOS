@@ -31,9 +31,11 @@ class Forms(html.parser.HTMLParser):
     def handle_starttag(self, tag, attrs):
         a=dict(attrs)
         if tag=='form':
-            self.current={'action':a.get('action',''),'fields':set(),'id':a.get('id','')}
+            self.current={'action':a.get('action',''),'fields':set(),'hidden':{},'id':a.get('id','')}
         elif tag=='input' and self.current is not None:
             self.current['fields'].add(a.get('name',''))
+            if a.get('type')=='hidden' and a.get('name'):
+                self.current['hidden'][a['name']]=a.get('value','')
     def handle_endtag(self,tag):
         if tag=='form' and self.current is not None:
             self.forms.append(self.current);self.current=None
@@ -105,8 +107,13 @@ def run():
             otp_form=find_form(res.text,{'otp'})
             # One factor alone cannot yield the callback; a legitimate TOTP must
             # be presented before the IdP issues its signed authorization code.
-            res=browser.post(otp_form['action'],data={'otp':totp(TOTP_SECRET),'login':'Log in'},follow_redirects=False)
-            assert res.status_code in (302,303),'OTP challenge was not accepted'
+            res=browser.post(otp_form['action'],data={**otp_form['hidden'],
+                       'otp':totp(TOTP_SECRET),'login':'Log in'},follow_redirects=False)
+            if res.status_code not in (302,303):
+                # Structural diagnostic only: no TOTP code, cookies or HTML body.
+                f=Forms();f.feed(res.text)
+                raise AssertionError('OTP not accepted: status '+str(res.status_code)+
+                                     ', returned form ids '+','.join(x['id'] for x in f.forms))
             location=res.headers.get('location','')
             if not location.startswith(cfg.redirect_uri):
                 raise AssertionError('OTP did not complete flow; next path: '+urlsplit(location).path)
