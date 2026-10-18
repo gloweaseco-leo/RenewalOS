@@ -11,3 +11,7 @@ benchmark_runs/
 
 # G1-F disposable browser screenshots may contain synthetic fixture labels.
 browser_artifacts/
+
+# G1-G local database restore artifacts
+*.pgdump
+*.backup

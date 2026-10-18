@@ -23,6 +23,7 @@ from .facts import (freeze_cohort,list_cohorts,cycle_timeline,import_contracts,
                     import_cash_events,BusinessRuleError)
 from .demo_sales import record_contract, record_payment, record_refund, sales_summary
 from .management import manager_snapshot
+from .release_gate import assert_local_only,assert_dedicated_pg_roles,local_readiness
 from .access import (initialize_access, login as access_login, logout as access_logout,
                      identity as access_identity, authorize_store, scoped_tasks,
                      scoped_opportunities, AccessDenied)
@@ -87,6 +88,7 @@ def _pg_auth_active():
 
 @asynccontextmanager
 async def lifespan(app):
+    assert_local_only()
     mode=os.getenv('RENEWAL_RUNTIME_MODE','demo')
     if mode not in ('demo','secure_local'):
         raise RuntimeError('不支持的运行模式；拒绝在未知配置下启动')
@@ -95,6 +97,7 @@ async def lifespan(app):
         app_dsn=os.getenv('RENEWAL_PG_APP_DSN','')
         if not auth_dsn or not app_dsn or auth_dsn==app_dsn:
             raise RuntimeError('PostgreSQL identity and business must use distinct configured roles')
+        assert_dedicated_pg_roles()
         # G1-E: never create or read a SQLite identity/business DB in PG mode.
     else:
         initialize()
@@ -125,7 +128,7 @@ async def demo_local_only(request:Request, call_next):
     if os.getenv('RENEWAL_RUNTIME_MODE', 'demo') == 'secure_local':
         # Fail closed: legacy demo business APIs are unauthenticated and must not be
         # exposed even when a valid session token is present.
-        allowed=(request.url.path == '/api/health' or
+        allowed=(request.url.path in ('/api/health','/api/ready') or
                  request.url.path in ('/','/static/secure.css','/static/secure.js',
                                       '/api/auth/login','/api/auth/logout') or
                  request.url.path.startswith('/api/v1/'))
@@ -417,6 +420,11 @@ def pg_cash_create(org_id:str,store_id:str,request:Request,data:PgCashRequest):
     dsn,scope=_g1c_scope(request,org_id,store_id)
     return _g1c_execute(record_synthetic_cash,dsn,scope,data.contract_id,data.event_id,
                         data.kind,data.amount_cents,data.occurred_on,data.refund_of)
+
+@app.get("/api/ready")
+def ready():
+    status=local_readiness()
+    return JSONResponse(status,status_code=200 if status["ready"] else 503,headers={"Cache-Control":"no-store"})
 
 @app.get("/api/health")
 def health():

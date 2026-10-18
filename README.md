@@ -127,3 +127,7 @@ See [G1-C release/limits](docs/RELEASE_G1C.md). New local-only `/api/v1/orgs/{or
 ## G1-F real-browser CI acceptance
 
 GitHub CI starts PostgreSQL 16, applies migrations and separate DB-role grants, runs Python 3.11/3.12 regression plus real TCP HTTP tests, and on Python 3.11 launches actual Playwright Chromium against loopback Uvicorn to click through the manager/staff renewal workflow. Results must come from the live CI run (local browser navigation may be blocked by the execution environment). See `docs/RELEASE_G1F.md`. Public deployment and production customer data remain prohibited.
+
+## G1-G｜公网禁用的上线防护与恢复演练
+
+G1-G新增生产部署强制NO-GO、双最小权限PG连接校验、`/api/ready`本地就绪检查、`python -m scripts.release_audit_g1g`审计和GitHub CI中仅使用合成数据库的`pg_dump`/`pg_restore`恢复对账。**不允许公网、不得接入真实学员或支付数据。**见 `docs/RELEASE_G1G.md`。
