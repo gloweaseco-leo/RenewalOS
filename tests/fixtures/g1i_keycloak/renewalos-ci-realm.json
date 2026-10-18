@@ -1,0 +1,33 @@
+{
+  "realm": "renewalos-ci",
+  "enabled": true,
+  "sslRequired": "none",
+  "displayName": "Synthetic OIDC provider CI ONLY",
+  "clients": [
+    {
+      "clientId": "renewalos-local-interop",
+      "name": "RenewalOS synthetic test client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "consentRequired": false,
+      "redirectUris": ["http://127.0.0.1:8000/"],
+      "webOrigins": ["http://127.0.0.1:8000"],
+      "attributes": {"pkce.code.challenge.method": "S256"}
+    }
+  ],
+  "users": [
+    {
+      "username": "synthetic-operator",
+      "enabled": true,
+      "emailVerified": false,
+      "credentials": [
+        {"type": "password", "value": "G1I-Synthetic-Password-No-Real-Accounts", "temporary": false}
+      ],
+      "requiredActions": []
+    }
+  ]
+}

@@ -140,3 +140,11 @@ G1-G新增生产部署强制NO-GO、双最小权限PG连接校验、`/api/ready`
 **只有管理员已映射的(issuer,sub)能登录；邮箱/昵称绝不自动生成门店权限。**
 执行 `python -m scripts.pg_apply_g1h` 仅支持一次性GitHub CI测试数据库。
 详见 `docs/RELEASE_G1H.md`。生产/预发公网仍为`NO_GO`。
+
+
+## G1-I OIDC provider interoperability (not public deployment)
+
+`python -m scripts.probe_provider_g1i` 检查**管理员预置**OIDC发行者的真实元数据、S256及签名公钥。
+GitHub CI以一次性Keycloak容器执行真正的HTTPS授权码交换，**纯密码认证无MFA被拒绝**。
+参见 `docs/RELEASE_G1I.md`、`deploy/preprod/README.md`。
+现有`release_gate`的生产/预发NO-GO不可放宽。
