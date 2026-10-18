@@ -7,6 +7,7 @@ import json
 
 import httpx
 import jwt
+from jwt.exceptions import PyJWTError
 
 from .oidc import MAX_JSON, OIDCConfig, OIDCRejected
 
@@ -62,7 +63,7 @@ def inspect_provider(cfg: OIDCConfig, *, client=None):
                 key = jwt.PyJWK.from_dict(entry, algorithm='RS256').key
                 if key.key_size >= 2048:
                     valid += 1
-            except (ValueError, KeyError, TypeError):
+            except (PyJWTError, ValueError, KeyError, TypeError):
                 continue
         if not valid:
             raise OIDCRejected('身份服务缺少合格RSA签名公钥')
