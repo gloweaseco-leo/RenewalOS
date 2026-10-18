@@ -42,10 +42,14 @@ class Forms(html.parser.HTMLParser):
             self.forms.append(self.current);self.current=None
 
 
-def totp(secret, moment=None):
+def totp(secret, moment=None, *, raw_credential=False):
     """RFC6238 6-digit SHA1 code generated at run time (never printed)."""
     stamp=int(time.time() if moment is None else moment)
-    raw=base64.b32decode(secret+'='*((-len(secret))%8))
+    # Keycloak's imported legacy OTP secretData.value is the raw text secret.
+    # Authenticator QR codes encode these UTF-8 bytes to Base32; RFC6238
+    # reference secrets, by contrast, are already Base32 in test vectors.
+    raw=(secret.encode('utf8') if raw_credential else
+         base64.b32decode(secret+'='*((-len(secret))%8)))
     mac=hmac.new(raw,struct.pack('>Q',stamp//30),hashlib.sha1).digest()
     offset=mac[-1]&15
     return f'{(int.from_bytes(mac[offset:offset+4],"big")&0x7fffffff)%1000000:06d}'
@@ -109,7 +113,7 @@ def run():
             # One factor alone cannot yield the callback; a legitimate TOTP must
             # be presented before the IdP issues its signed authorization code.
             res=browser.post(otp_form['action'],data={**otp_form['hidden'],
-                       'otp':totp(TOTP_SECRET),'login':'Log in'},follow_redirects=False)
+                       'otp':totp(TOTP_SECRET,raw_credential=True),'login':'Log in'},follow_redirects=False)
             if res.status_code not in (302,303):
                 # Structural diagnostic only: no TOTP code, cookies or HTML body.
                 f=Forms();f.feed(res.text)

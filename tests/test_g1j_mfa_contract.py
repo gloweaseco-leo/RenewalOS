@@ -9,6 +9,9 @@ def test_totp_rfc6238_vector_and_unique_repeating_window():
     # RFC6238 test vector (SHA1 8-digit 94287082, truncated to 6 digits).
     assert totp('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',59)=='287082'
     assert totp(TOTP_SECRET,1700000000)==totp(TOTP_SECRET,1700000005)
+    # Keycloak's pre-imported raw credential is Base32-encoded only in QR codes.
+    from base64 import b32encode
+    assert totp(TOTP_SECRET,1700000000,raw_credential=True)==totp(b32encode(TOTP_SECRET.encode()).decode(),1700000000)
 
 def test_real_mfa_account_uses_non_mapped_otp_credential():
     fixture=json.loads((ROOT/'tests/fixtures/g1i_keycloak/renewalos-ci-realm.json').read_text('utf8'))
