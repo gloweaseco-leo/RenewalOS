@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RenewalOS 安全本地预览</title><link rel="stylesheet" href="/static/secure.css"></head>
+<body><main class="shell">
+<header><strong>RenewalOS</strong><span>G1-A / 本地安全预览</span></header>
+<section class="banner">当前仅用于本地权限验证，尚无 PostgreSQL、生产账户管理与真实客户数据支持。禁止公网部署。</section>
+<section id="loginPanel" class="panel"><h1>员工登录</h1><p>使用本地管理员预先创建的账户。密码仅发送到本机API。</p>
+<form id="loginForm"><label>账户ID<input id="username" autocomplete="username" required></label>
+<label>密码<input id="password" type="password" autocomplete="current-password" required></label>
+<button>登录</button></form></section>
+<section id="workspace" class="panel" hidden><div class="controls"><h1 id="welcome">我的工作台</h1><button id="logout">退出</button></div>
+<label>已授权门店 <select id="store"></select></label>
+<div class="controls"><button id="loadOpportunities">查看机会</button><button id="loadTasks">查看我的任务</button><button id="loadManager">经理复盘</button></div>
+<p id="scopeNote"></p><div class="items" id="results" aria-live="polite"></div></section>
+<p id="status" role="status" aria-live="polite"></p>
+<footer>此界面只展示带门店权限的只读数据。旧版不受保护的演示业务API已被停用；不存在在线生产环境。</footer>
+</main><script src="/static/secure.js"></script></body></html>

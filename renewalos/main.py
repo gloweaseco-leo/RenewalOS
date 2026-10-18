@@ -23,6 +23,9 @@ from .facts import (freeze_cohort,list_cohorts,cycle_timeline,import_contracts,
                     import_cash_events,BusinessRuleError)
 from .demo_sales import record_contract, record_payment, record_refund, sales_summary
 from .management import manager_snapshot
+from .access import (initialize_access, login as access_login, logout as access_logout,
+                     identity as access_identity, authorize_store, scoped_tasks,
+                     scoped_opportunities, AccessDenied)
 
 ROOT=Path(__file__).resolve().parent.parent
 SCHEMAS={
@@ -77,10 +80,15 @@ def convert(kind,r):
 
 @asynccontextmanager
 async def lifespan(app):
+    mode=os.getenv('RENEWAL_RUNTIME_MODE','demo')
+    if mode not in ('demo','secure_local'):
+        raise RuntimeError('不支持的运行模式；拒绝在未知配置下启动')
     initialize()
+    if mode == 'secure_local':
+        initialize_access()
     yield
 
-app=FastAPI(title="RenewalOS Demo",version="0.8.0",lifespan=lifespan,
+app=FastAPI(title="RenewalOS",version="1.0.0-alpha1",lifespan=lifespan,
     docs_url=None,redoc_url=None,openapi_url=None)
 
 @app.middleware("http")
@@ -88,7 +96,11 @@ async def demo_local_only(request:Request, call_next):
     # Secure default: only trusted local host values and same-origin writes.
     # This is a local demonstration, NOT multiuser authentication.
     host=request.url.hostname
-    if host not in {"localhost","127.0.0.1","[::1]","::1","testserver"}:
+    peer=request.client.host if request.client else None
+    if (host not in {"localhost","127.0.0.1","[::1]","::1","testserver"} or
+            peer not in {'127.0.0.1','::1','testclient'}):
+        # This is defense-in-depth ONLY. A reverse proxy on loopback may still
+        # forward internet traffic, so bind the server to 127.0.0.1 as well.
         return JSONResponse({"detail":"仅允许本机访问"},status_code=403)
     if request.method not in {"GET","HEAD","OPTIONS"}:
         origin=request.headers.get("origin")
@@ -97,6 +109,15 @@ async def demo_local_only(request:Request, call_next):
             parsed=urlparse(origin)
             if parsed.hostname not in {"localhost","127.0.0.1","::1"} or parsed.scheme not in {"http","https"}:
                 return JSONResponse({"detail":"禁止跨站写入"},status_code=403)
+    if os.getenv('RENEWAL_RUNTIME_MODE', 'demo') == 'secure_local':
+        # Fail closed: legacy demo business APIs are unauthenticated and must not be
+        # exposed even when a valid session token is present.
+        allowed=(request.url.path == '/api/health' or
+                 request.url.path in ('/','/static/secure.css','/static/secure.js',
+                                      '/api/auth/login','/api/auth/logout') or
+                 request.url.path.startswith('/api/v1/'))
+        if not allowed:
+            return JSONResponse({'detail':'安全模式已禁用旧演示功能，请使用受保护接口'},status_code=403)
     return await call_next(request)
 
 # G0.6: Synthetic sales events; these are NOT production payment endpoints.
@@ -154,14 +175,94 @@ class Followup(BaseModel):
     note:str=Field(max_length=1000,default="")
 
 @app.get("/")
-def home():return FileResponse(ROOT/"static"/"index.html")
+def home():
+    if os.getenv("RENEWAL_RUNTIME_MODE", "demo")=="secure_local":
+        return FileResponse(ROOT/"static"/"secure.html")
+    return FileResponse(ROOT/"static"/"index.html")
+@app.get("/static/secure.css")
+def secure_css():return FileResponse(ROOT/"static"/"secure.css",media_type="text/css")
+@app.get("/static/secure.js")
+def secure_js():return FileResponse(ROOT/"static"/"secure.js",media_type="application/javascript")
 @app.get("/static/style.css")
 def style():return FileResponse(ROOT/"static"/"style.css",media_type="text/css")
 @app.get("/static/app.js")
 def script():return FileResponse(ROOT/"static"/"app.js",media_type="application/javascript")
+
+# G1-A: these APIs are the ONLY business endpoints available in secure_local mode.
+# All store scopes are derived from authenticated membership, never trusted from
+# client-supplied aliases. Public/hosted execution remains forbidden.
+class LocalCredentials(BaseModel):
+    username: str=Field(min_length=2,max_length=64)
+    password: str=Field(min_length=1,max_length=256)
+
+
+def _require_secure():
+    if os.getenv('RENEWAL_RUNTIME_MODE', 'demo') != 'secure_local':
+        raise HTTPException(404, '接口不存在')
+
+
+def _bearer(request:Request):
+    raw=request.headers.get('authorization','')
+    parts=raw.split()
+    if len(parts)!=2 or parts[0].lower()!='bearer':
+        raise HTTPException(status_code=401,detail='未认证',headers={'WWW-Authenticate':'Bearer'})
+    return parts[1]
+
+
+@app.post('/api/auth/login')
+def local_login(credentials:LocalCredentials):
+    _require_secure()
+    try: return access_login(credentials.username,credentials.password)
+    except AccessDenied as exc:
+        raise HTTPException(status_code=401,detail='账号或密码错误') from exc
+
+
+@app.post('/api/auth/logout')
+def local_logout(request:Request):
+    _require_secure()
+    try: access_logout(_bearer(request))
+    except AccessDenied as exc: raise HTTPException(status_code=401,detail='未认证') from exc
+    return {'ok':True}
+
+
+@app.get('/api/v1/me')
+def local_me(request:Request):
+    _require_secure()
+    try: return access_identity(_bearer(request))
+    except AccessDenied as exc: raise HTTPException(status_code=401,detail='未认证') from exc
+
+
+def _secure_membership(request:Request,store_id:str,roles=None):
+    _require_secure()
+    try:
+        return authorize_store(_bearer(request),store_id,roles)
+    except AccessDenied as exc:
+        if str(exc)=='没有此门店权限':raise HTTPException(status_code=403,detail='没有此门店权限') from exc
+        raise HTTPException(status_code=401,detail='未认证') from exc
+
+
+@app.get('/api/v1/stores/{store_id}/opportunities')
+def secured_opportunities(store_id:str,request:Request):
+    principal=_secure_membership(request,store_id,{'staff','manager'})
+    return {'store_id':store_id,'items':scoped_opportunities(store_id,owner=principal['user_id'] if principal['role']=='staff' else None)}
+
+
+@app.get('/api/v1/stores/{store_id}/tasks')
+def secured_tasks(store_id:str,request:Request):
+    principal=_secure_membership(request,store_id,{'staff','manager'})
+    return {'store_id':store_id,'items':scoped_tasks(store_id,owner=principal['user_id'] if principal['role']=='staff' else None)}
+
+
+@app.get('/api/v1/stores/{store_id}/management')
+def secured_management(store_id:str,request:Request):
+    _secure_membership(request,store_id,{'manager'})
+    return manager_snapshot(store_id=store_id)
+
 @app.get("/api/health")
 def health():
-    return {"ok":True,"mode":"LOCAL_DEMO","ai_configured":all((os.getenv("RENEWAL_AI_BASE_URL"),os.getenv("RENEWAL_AI_API_KEY"),os.getenv("RENEWAL_AI_MODEL")))}
+    mode=os.getenv("RENEWAL_RUNTIME_MODE", "demo")
+    return {"ok":True,"mode":"SECURE_LOCAL_ALPHA" if mode=="secure_local" else "LOCAL_DEMO",
+            "ai_configured":all((os.getenv("RENEWAL_AI_BASE_URL"),os.getenv("RENEWAL_AI_API_KEY"),os.getenv("RENEWAL_AI_MODEL")))}
 @app.post("/api/demo/reset")
 def reset():return {"opportunities":load_demo(),"mode":"SYNTHETIC_DEMO"}
 @app.post("/api/recompute")
