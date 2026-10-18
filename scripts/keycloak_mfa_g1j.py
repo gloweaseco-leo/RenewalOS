@@ -27,7 +27,9 @@ SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
 
 def totp(timestamp=None):
     t = int(time.time() if timestamp is None else timestamp)
-    key = base64.b32decode(SECRET)
+    # Keycloak imported OTP secretData stores raw UTF-8 key bytes by default;
+    # the authenticator-app QR code would Base32-encode those bytes.
+    key = SECRET.encode('utf8')
     counter = struct.pack('>Q', t // 30)
     sig = hmac.new(key, counter, hashlib.sha1).digest()
     offset = sig[-1] & 15
