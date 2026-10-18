@@ -3,3 +3,11 @@
 .scenario{margin-top:18px}.scenario-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:18px}.scenario-grid label{font-size:11px;color:#718599;display:grid;gap:7px}.scenario-grid input{width:100%;border:1px solid #dbe7ed;border-radius:8px;padding:11px;font-size:13px}.scenario-result{display:flex;gap:40px;border-top:1px solid #e8eef0;padding-top:18px;margin-top:20px}.scenario-result div{display:grid;gap:6px}.scenario-result small{font-size:11px;color:#8a9cab}.scenario-result strong{font-size:25px;color:#167d67}@media(max-width:900px){.scenario-grid{grid-template-columns:repeat(2,1fr)}}
 
 .cohort-reports{display:grid;gap:12px;margin-top:20px}.cohort-card{border:1px solid #e4ecf0;border-radius:8px;padding:15px;background:#f8fbfc;font-size:12px}.cohort-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}.cohort-arm{border-radius:6px;padding:10px;background:white;color:#587083;font-size:11px}.event-lines{display:grid;gap:7px;margin-top:10px}.event-line{border-left:2px solid #7c9dab;background:#f7f9fb;padding:9px;font-size:11px;overflow-wrap:anywhere}@media(max-width:750px){.cohort-grid{grid-template-columns:1fr}}
+
+/* G0.6: auditable synthetic renewal transaction steps */
+.sale-panel {margin-top:10px;padding:14px;border:1px solid #c9dce6;background:#f8fbfe;border-radius:10px;}
+.sale-panel .detail-form {margin:13px 0;}
+.sale-panel .event-lines {margin-bottom:12px;}
+.sale-content p {margin:10px 0;}
+.filters select {max-width:135px;}
+@media(max-width:760px){.filters {flex-wrap:wrap}.filters input {flex-basis:100%}}
