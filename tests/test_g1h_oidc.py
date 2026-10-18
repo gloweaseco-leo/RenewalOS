@@ -39,10 +39,10 @@ def keys():
     return priv, {'keys':[jwk]}
 
 
-def id_token(private, cfg, nonce, **change):
+def id_token(private, cfg, initial_nonce, **change):
     now=int(datetime.now(timezone.utc).timestamp())
     claims={'iss':cfg.issuer,'aud':cfg.client_id,'sub':'synthetic-oidc-sub',
-            'iat':now,'exp':now+180,'nonce':nonce,'amr':['pwd','mfa']}
+            'iat':now,'exp':now+180,'nonce':initial_nonce,'amr':['pwd','mfa']}
     claims.update(change)
     return jwt.encode(claims,private,algorithm='RS256',headers={'kid':'test-key'})
 
