@@ -7,12 +7,13 @@
 </head>
 <body>
 <div class="layout">
-  <header class="top"><div><span class="brand-mark">R</span><strong>RenewalOS</strong><span class="minor">续费经营工作台 · G1-E</span></div><span class="environment">仅本地 · 全部资金为模拟</span></header>
+  <header class="top"><div><span class="brand-mark">R</span><strong>RenewalOS</strong><span class="minor">续费经营工作台 · G1-H</span></div><span class="environment">仅本地 · 全部资金为模拟</span></header>
   <div class="banner">安全本地开发预览：需要已授权的本地账户与 PostgreSQL 16 测试数据库。禁止公网部署、真实儿童资料及真实付款录入。PostgreSQL身份与业务连接分别授权；仅使用合成数据。</div>
   <main>
     <section id="loginPanel" class="panel login">
       <h1>员工登录</h1><p class="muted">使用管理员预先创建的预先授权的测试账户。登录成功后选择授权门店并填写机构代号，数据库会再次验证机构与门店权限。</p>
       <form id="loginForm" class="form"><label>账户ID<input id="username" autocomplete="username" required maxlength="64"></label><label>密码<input id="password" type="password" autocomplete="current-password" required></label><button type="submit" class="primary">登录</button></form>
+      <button id="oidcLogin" type="button" class="primary" hidden>使用企业身份服务登录（OIDC / MFA）</button>
     </section>
     <section id="workspace" hidden>
       <div class="workspace-head"><div><h1 id="welcome">我的经营工作台</h1><p id="scopeNote" class="muted">请选择已授权门店</p></div><button id="logout" type="button" class="secondary">退出登录</button></div>

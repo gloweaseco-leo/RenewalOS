@@ -81,9 +81,9 @@ def convert(kind,r):
 
 def _pg_auth_active():
     backend=os.getenv('RENEWAL_AUTH_BACKEND','sqlite')
-    if backend not in ('sqlite','postgres'):
+    if backend not in ('sqlite','postgres','oidc'):
         raise RuntimeError('未知身份后端，拒绝启动')
-    return backend=='postgres'
+    return backend in ('postgres','oidc')
 
 
 @asynccontextmanager
@@ -98,6 +98,9 @@ async def lifespan(app):
         if not auth_dsn or not app_dsn or auth_dsn==app_dsn:
             raise RuntimeError('PostgreSQL identity and business must use distinct configured roles')
         assert_dedicated_pg_roles()
+        if os.getenv('RENEWAL_AUTH_BACKEND')=='oidc':
+            from .oidc import OIDCConfig
+            OIDCConfig.from_env()  # fail closed before serving any request
         # G1-E: never create or read a SQLite identity/business DB in PG mode.
     else:
         initialize()
@@ -130,7 +133,9 @@ async def demo_local_only(request:Request, call_next):
         # exposed even when a valid session token is present.
         allowed=(request.url.path in ('/api/health','/api/ready') or
                  request.url.path in ('/','/static/secure.css','/static/secure.js',
-                                      '/api/auth/login','/api/auth/logout') or
+                                      '/api/auth/login','/api/auth/logout',
+                                      '/api/auth/methods','/api/auth/oidc/start',
+                                      '/api/auth/oidc/complete') or
                  request.url.path.startswith('/api/v1/'))
         if not allowed:
             return JSONResponse({'detail':'安全模式已禁用旧演示功能，请使用受保护接口'},status_code=403)
@@ -228,6 +233,8 @@ def _bearer(request:Request):
 @app.post('/api/auth/login')
 def local_login(credentials:LocalCredentials):
     _require_secure()
+    if os.getenv('RENEWAL_AUTH_BACKEND')=='oidc':
+        raise HTTPException(403,'OIDC模式已禁用本地密码登录')
     try:
         if _pg_auth_active():
             from .pg_auth import login
@@ -235,6 +242,54 @@ def local_login(credentials:LocalCredentials):
         return access_login(credentials.username,credentials.password)
     except AccessDenied as exc:
         raise HTTPException(status_code=401,detail='账号或密码错误') from exc
+
+
+# G1-G/2: OIDC is local-only and requires pre-provisioned PG subject bindings.
+# A signed identity token NEVER directly grants a store or creates an account.
+class OIDCComplete(BaseModel):
+    code: str=Field(min_length=1,max_length=2048)
+    state: str=Field(min_length=30,max_length=200)
+
+
+def _require_oidc():
+    _require_secure()
+    if os.getenv('RENEWAL_AUTH_BACKEND')!='oidc':
+        raise HTTPException(404,'认证方式未启用')
+
+
+@app.get('/api/auth/methods')
+def auth_methods():
+    _require_secure()
+    return {'method':'oidc' if os.getenv('RENEWAL_AUTH_BACKEND')=='oidc' else 'password',
+            'public_release':'NO_GO'}
+
+
+@app.post('/api/auth/oidc/start')
+def oidc_start():
+    _require_oidc()
+    from .oidc import OIDCConfig, start, OIDCRejected
+    try:
+        url,cookie=start(os.environ['RENEWAL_PG_AUTH_DSN'],OIDCConfig.from_env())
+    except OIDCRejected as exc:
+        raise HTTPException(503,str(exc)) from exc
+    response=JSONResponse({'authorization_url':url},headers={'Cache-Control':'no-store'})
+    response.set_cookie('renewal_oidc_csrf',cookie,httponly=True,samesite='lax',
+                        secure=False,path='/',max_age=300)
+    return response
+
+
+@app.post('/api/auth/oidc/complete')
+def oidc_complete(data:OIDCComplete,request:Request):
+    _require_oidc()
+    from .oidc import OIDCConfig, complete, OIDCRejected
+    try:
+        result=complete(os.environ['RENEWAL_PG_AUTH_DSN'],OIDCConfig.from_env(),
+                        data.state,request.cookies.get('renewal_oidc_csrf',''),data.code)
+    except (OIDCRejected,AccessDenied) as exc:
+        raise HTTPException(401,'外部身份未验证或未授权') from exc
+    response=JSONResponse(result,headers={'Cache-Control':'no-store'})
+    response.delete_cookie('renewal_oidc_csrf',path='/')
+    return response
 
 
 @app.post('/api/auth/logout')

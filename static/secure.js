@@ -158,8 +158,8 @@ function renderManager(report){const pane=$('detail');clear(pane);if(!report)ret
   }
   pane.append(el('p',report.disclaimer||'模拟流水不代表真实到账，也不是AI增量收入。','disclaimer'));
 }
-$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;
-  try{const data=await api('/api/auth/login',{username:$('username').value.trim(),password:$('password').value});
+function acceptLogin(data){
+    if(!data||!data.access_token||!data.user_id)throw Error('认证响应不完整');
     state.token=data.access_token;state.memberships=data.memberships||{};state.user=data.user_id;state.authBackend=data.identity_backend||'sqlite';
     $('password').value='';const selector=$('store');clear(selector);
     for(const [key,role] of Object.entries(state.memberships)){
@@ -168,9 +168,41 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=
       const opt=el('option',(compound?pair[0]+' / ':'')+pair[1]+' / '+name(role));
       opt.value=pair[1];opt.dataset.org=pair[0]||'';selector.append(opt);
     }
-    if(state.authBackend==='postgres'){ $('org').value=selector.selectedOptions[0]?.dataset.org||''; }
+    if(state.authBackend==='postgres')$('org').value=selector.selectedOptions[0]?.dataset.org||'';
     $('loginPanel').hidden=true;$('workspace').hidden=false;text('welcome',data.user_id+' 的续费经营工作台');
-    msg('已登录。填写机构代号，验证数据库所属机构与门店后才能查看业务。');
+    msg('已登录。请验证机构及门店权限后查看业务。');
+}
+async function initializeAuth(){
+  // Clear the OIDC authorization response from browser history before any API call.
+  const query=new URLSearchParams(location.search);
+  const code=query.get('code'),flow=query.get('state'),error=query.get('error');
+  if(code||flow||error){history.replaceState(null,'',location.pathname);}
+  try{
+    const methods=await api('/api/auth/methods');
+    if(methods.method==='oidc'){
+      $('loginForm').hidden=true;$('oidcLogin').hidden=false;
+      if(error)throw Error('身份服务未完成授权');
+      if(code&&flow){
+        const login=await api('/api/auth/oidc/complete',{code,state:flow});
+        acceptLogin(login);return;
+      }
+      if(code||flow)throw Error('身份服务回调无效，请重新登录');
+    } else if(code||flow){throw Error('当前未启用企业身份服务');}
+  }catch(e){logoutUI();msg(e.message,true);}
+}
+$('oidcLogin').addEventListener('click',async()=>{
+  const button=$('oidcLogin');button.disabled=true;
+  try{
+    const result=await api('/api/auth/oidc/start',{});
+    const url=new URL(result.authorization_url);
+    if(url.protocol!=='https:')throw Error('企业身份服务地址不安全');
+    location.assign(url.href);
+  }catch(e){button.disabled=false;msg(e.message,true);}
+});
+void initializeAuth();
+$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;
+  try{const data=await api('/api/auth/login',{username:$('username').value.trim(),password:$('password').value});
+    acceptLogin(data);
   }catch(err){logoutUI();msg(err.message,true);}finally{btn.disabled=false;}
 });
 $('logout').addEventListener('click',async()=>{try{if(state.token)await api('/api/auth/logout',{});}catch(_e){}logoutUI();msg('已退出，未在浏览器保存会话。');});
