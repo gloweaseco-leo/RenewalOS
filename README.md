@@ -148,3 +148,6 @@ G1-G新增生产部署强制NO-GO、双最小权限PG连接校验、`/api/ready`
 GitHub CI以一次性Keycloak容器执行真正的HTTPS授权码交换，**纯密码认证无MFA被拒绝**。
 参见 `docs/RELEASE_G1I.md`、`deploy/preprod/README.md`。
 现有`release_gate`的生产/预发NO-GO不可放宽。
+
+
+G1-J（开发分支）OIDC会话实时撤权测试见 `docs/RELEASE_G1J.md`；公网仍不放行。

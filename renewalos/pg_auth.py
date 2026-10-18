@@ -52,8 +52,13 @@ def login(dsn,user,password):
 
 
 def _actor(con,token):
-    row=con.execute('SELECT user_id FROM renewalos_auth.sessions WHERE token_hash=%s AND revoked_at IS NULL AND expires_at>now()',(digest(token),)).fetchone()
+    row=con.execute('SELECT user_id,identity_source FROM renewalos_auth.sessions WHERE token_hash=%s AND revoked_at IS NULL AND expires_at>now()',(digest(token),)).fetchone()
     if not row:raise AccessDenied('未认证')
+    # Recheck externally managed identity binding on EVERY request, not just login.
+    # A disabled binding must invalidate an existing OIDC session immediately.
+    if row[1] == 'oidc':
+        active=con.execute('SELECT 1 FROM renewalos_auth.oidc_bindings WHERE user_id=%s AND enabled LIMIT 1',(row[0],)).fetchone()
+        if not active:raise AccessDenied('未认证')
     allowed=memberships(con,row[0])
     if not allowed:raise AccessDenied('未认证')
     return row[0],allowed

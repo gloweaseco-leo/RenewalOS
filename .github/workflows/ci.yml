@@ -49,6 +49,8 @@ jobs:
         run: python -m scripts.pg_ci_auth_roles
       - name: Apply G1-H local OIDC security migration
         run: python -m scripts.pg_apply_g1h
+      - name: Apply G1-J OIDC revocation migration
+        run: python -m scripts.pg_apply_g1j
       - name: Execute SQLite and PostgreSQL regression tests
         run: python -m pytest -q
       - name: Run real TCP HTTP business E2E

@@ -61,7 +61,7 @@ def local_readiness(environ=None, driver=None):
             driver = _driver()
         with driver.connect(env["RENEWAL_PG_APP_DSN"], connect_timeout=3) as con:
             versions = {row[0] for row in con.execute("SELECT version FROM renewalos.schema_migrations")}
-        needed = REQUIRED_MIGRATIONS | ({"004_oidc_local"} if env.get("RENEWAL_AUTH_BACKEND")=="oidc" else set())
+        needed = REQUIRED_MIGRATIONS | ({"004_oidc_local", "005_oidc_session_revocation"} if env.get("RENEWAL_AUTH_BACKEND")=="oidc" else set())
         if not needed.issubset(versions):
             return {"ready": False, "profile": "LOCAL_SYNTHETIC_ONLY", "reason": "MIGRATIONS_INCOMPLETE"}
         with driver.connect(env["RENEWAL_PG_AUTH_DSN"], connect_timeout=3) as con:
