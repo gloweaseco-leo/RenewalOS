@@ -18,3 +18,14 @@
 .work-layout{min-height:570px}
 .task-create-panel .detail-form{margin-top:12px}
 @media(max-width:670px){.work-filters{display:grid;grid-template-columns:1fr}.work-layout{grid-template-columns:1fr}}
+
+/* G0.8 manager process review — read-only synthetic/local */
+.manager-panels{margin-bottom:18px}.manager-panels.card{margin-top:18px}.manager-metrics{display:grid;gap:10px;margin-top:16px}
+.manager-metric{display:flex;gap:12px;justify-content:space-between;align-items:center;border-bottom:1px solid #edf2f5;padding:9px 0;font-size:12px;color:#627487}
+.manager-metric strong{font-size:16px;color:#183d54;flex-shrink:0}
+.manager-cases{display:grid;gap:8px;margin-top:15px;max-height:430px;overflow-y:auto}
+.manager-case{width:100%;display:flex;flex-direction:column;gap:6px;text-align:left;background:#f8fbfd;border:1px solid #e3edf3;padding:12px 15px;border-radius:9px;color:#324c60}
+.manager-case:hover,.manager-case:focus-visible{background:#ebf6f2;outline-color:#137b65}
+.manager-case strong{font-size:12px}.manager-case small{font-size:11px;color:#71859a}
+#mgLimitations{margin:14px 0 24px}#managerStore{width:100%}
+@media(max-width:850px){.manager-panels{grid-template-columns:1fr}}

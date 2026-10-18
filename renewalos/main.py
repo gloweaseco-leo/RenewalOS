@@ -22,6 +22,7 @@ from .benchmark_lab import evaluate_model
 from .facts import (freeze_cohort,list_cohorts,cycle_timeline,import_contracts,
                     import_cash_events,BusinessRuleError)
 from .demo_sales import record_contract, record_payment, record_refund, sales_summary
+from .management import manager_snapshot
 
 ROOT=Path(__file__).resolve().parent.parent
 SCHEMAS={
@@ -79,7 +80,7 @@ async def lifespan(app):
     initialize()
     yield
 
-app=FastAPI(title="RenewalOS Demo",version="0.6.0",lifespan=lifespan,
+app=FastAPI(title="RenewalOS Demo",version="0.8.0",lifespan=lifespan,
     docs_url=None,redoc_url=None,openapi_url=None)
 
 @app.middleware("http")
@@ -206,6 +207,11 @@ def task_followup(task_id:str,data:TaskFollowup):
 
 @app.get("/api/report")
 def metrics():return report()
+
+@app.get("/api/management/overview")
+def manager_overview(store_id: str | None = None):
+    try: return manager_snapshot(store_id=store_id)
+    except ValueError as e: raise HTTPException(422,str(e)) from e
 
 @app.post("/api/cohorts/freeze")
 def freeze(data:FreezeRequest):

@@ -1,6 +1,6 @@
 # RenewalOS — Sports Training Renewal Operations
 
-**G0.7 independent localhost prototype** · no dependency on Aoguan's unsigned `aoguan-webapp` contract.
+**G0.8 independent localhost prototype** · no dependency on Aoguan's unsigned `aoguan-webapp` contract.
 
 A small working loop: sanitized CSV data → explainable renewal signals → household-level experimental arms → staff-recorded followup → actual net paid facts. It **does not** invent AI uplift/ROI; real model advice only runs with a configured endpoint in the AI arm.
 
@@ -90,3 +90,7 @@ See `docs/RELEASE_G06.md`.
 - **无用户认证与正式门店数据权限**，责任人只是本地演示代号；不触达真实客户、不接入生产支付，不可公网部署。
 
 详情见 [`docs/RELEASE_G07.md`](docs/RELEASE_G07.md)。
+
+## G0.8 — Manager process review (localhost-only)
+
+Read-only **门店经营复盘** provides store-filtered current-stage counts, distinct process milestones, staff task workload, exception review and traceable case navigation. This is **not** a causal conversion funnel, verified processor settlement or ROI. GET `/api/management/overview` only works under the existing localhost host restrictions. See `docs/RELEASE_G08.md`.
