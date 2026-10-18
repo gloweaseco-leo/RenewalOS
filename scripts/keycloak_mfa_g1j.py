@@ -70,11 +70,17 @@ def run():
         password_response=browser.post(form.action,data={
             'username':'synthetic-mfa-operator','password':'G1J-CI-only-Password',
         },follow_redirects=False)
-        assert password_response.status_code in (302,303), 'Keycloak did not progress after password'
-        step=password_response.headers.get('location','')
-        assert step.startswith(ISSUER+'/login-actions/'), 'Keycloak did not require OTP step'
-        otp_page=browser.get(step)
-        assert otp_page.status_code==200, 'Keycloak OTP form not available'
+        # Keycloak versions may render the OTP challenge directly with 200,
+        # or redirect (302) to the OTP step. Neither case is a login failure.
+        if password_response.status_code==200:
+            otp_page=password_response
+        elif password_response.status_code in (302,303):
+            step=password_response.headers.get('location','')
+            assert step.startswith(ISSUER+'/login-actions/'), 'Keycloak did not require OTP step'
+            otp_page=browser.get(step)
+        else:
+            raise AssertionError('Unexpected Keycloak password step status')
+        assert otp_page.status_code == 200 and 'name="otp"' in otp_page.text, 'Keycloak OTP form not available (no second factor)' 
         otp_form=LoginForm();otp_form.feed(otp_page.text)
         assert otp_form.action and otp_form.action.startswith(ISSUER+'/login-actions/'), 'OTP form action not found'
         otp_response=browser.post(otp_form.action,data={'otp':totp()},follow_redirects=False)
