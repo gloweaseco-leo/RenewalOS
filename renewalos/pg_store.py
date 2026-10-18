@@ -48,10 +48,9 @@ def tenant_transaction(dsn: str, scope: TenantScope, *, roles=("manager", "staff
             conn.execute("SELECT set_config('renewalos.org_id', %s, true)", (scope.org_id,))
             conn.execute("SELECT set_config('renewalos.store_id', %s, true)", (scope.store_id,))
             conn.execute("SELECT set_config('renewalos.actor_id', %s, true)", (scope.user_id,))
-            membership = conn.execute('''
-                SELECT role FROM renewalos.store_memberships
-                WHERE org_id=%s AND store_id=%s AND user_id=%s AND enabled
-            ''', (scope.org_id,scope.store_id,scope.user_id)).fetchone()
+            # Narrow SECURITY DEFINER function checks enabled identity + both
+            # memberships; app DB role must not read identity_users directly.
+            membership = conn.execute('SELECT renewalos.actor_store_role()').fetchone()
             if membership is None or membership[0] not in roles:
                 raise TenantAccessError("not authorized for this store")
             yield conn
