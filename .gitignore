@@ -8,3 +8,6 @@ __pycache__/
 
 # G0.5 local benchmark artifacts may include non-production model output.
 benchmark_runs/
+
+# G1-F disposable browser screenshots may contain synthetic fixture labels.
+browser_artifacts/
