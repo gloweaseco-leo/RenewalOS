@@ -14,6 +14,7 @@ from pydantic import BaseModel,Field
 from .db import connect,initialize
 from .core import recompute, list_opportunities, list_followups, report, now_iso
 from .demo import load_demo
+from .tasks import create_task,list_tasks,task_summary,task_history,update_task,record_task_followup,TaskRuleError,FOLLOWUP_TO_TASK,OPEN
 from .ai import suggest,suggest_with_telemetry,AIUnavailable
 from .quality import validate_model_advice,signal_fingerprint,AdviceRejected,POLICY_VERSION
 from .evaluation import baseline_report,benchmark_model
@@ -127,6 +128,24 @@ class ReviewRequest(BaseModel):
 class BenchmarkRequest(BaseModel):
     max_cases: int=Field(default=4,ge=1,le=4)
 
+class TaskCreate(BaseModel):
+    opportunity_id: str=Field(min_length=2,max_length=120)
+    owner: str=Field(min_length=1,max_length=50)
+    due_on: date
+    note: str=Field(default='',max_length=1000)
+
+class TaskUpdate(BaseModel):
+    actor: str=Field(min_length=1,max_length=50)
+    owner: str|None=Field(default=None,max_length=50)
+    due_on: date|None=None
+    status: str|None=None
+    note: str=Field(default='',max_length=1000)
+
+class TaskFollowup(BaseModel):
+    actor: str=Field(min_length=1,max_length=50)
+    status: str
+    note: str=Field(default='',max_length=1000)
+
 class Followup(BaseModel):
     opportunity_id:str=Field(min_length=2,max_length=120)
     owner:str=Field(min_length=1,max_length=50)
@@ -152,6 +171,38 @@ def opportunities(include_archived: bool=False):
 @app.get("/api/followups/{opportunity_id}")
 def followup_history(opportunity_id: str):
     return {"items": list_followups(opportunity_id=opportunity_id)}
+
+# G0.7 local work queue. Owner is an alias, NOT an authenticated identity.
+@app.get('/api/tasks')
+def tasks(store_id: str|None=None, owner: str|None=None, status: str|None=None, due_bucket: str|None=None):
+    if status and status not in ('all','open','in_progress','waiting','done','cancelled'):
+        raise HTTPException(422,'任务状态无效')
+    if due_bucket and due_bucket not in ('all','overdue','today','upcoming','resolved'):
+        raise HTTPException(422,'截止日期筛选无效')
+    if any(len(v)>100 for v in (store_id or '',owner or '')):raise HTTPException(422,'筛选字段过长')
+    return {'items':list_tasks(store_id,owner,status,due_bucket),
+            'summary':task_summary(store_id,owner)}
+
+@app.post('/api/tasks')
+def new_task(data:TaskCreate):
+    try:return create_task(data.opportunity_id,data.owner,data.due_on.isoformat(),data.note)
+    except TaskRuleError as e:raise HTTPException(422,str(e)) from e
+
+@app.patch('/api/tasks/{task_id}')
+def edit_task(task_id:str,data:TaskUpdate):
+    try:return update_task(task_id,data.actor,owner=data.owner,
+             due_on=data.due_on.isoformat() if data.due_on else None,status=data.status,note=data.note)
+    except TaskRuleError as e:raise HTTPException(422,str(e)) from e
+
+@app.get('/api/tasks/{task_id}/history')
+def history_task(task_id:str):
+    try:return {'items':task_history(task_id)}
+    except TaskRuleError as e:raise HTTPException(404,str(e)) from e
+
+@app.post('/api/tasks/{task_id}/followups')
+def task_followup(task_id:str,data:TaskFollowup):
+    try:return record_task_followup(task_id,data.actor,data.status,data.note)
+    except TaskRuleError as e:raise HTTPException(422,str(e)) from e
 
 @app.get("/api/report")
 def metrics():return report()
@@ -270,8 +321,18 @@ def save_followup(data:Followup):
                        JOIN experiment_assignments a ON l.family_id=a.family_id AND l.store_id=a.store_id WHERE o.opportunity_id=? AND o.is_active=1""",(data.opportunity_id,)).fetchone()
         if not existing:raise HTTPException(404,"机会不存在")
         if existing["arm"]=="control":raise HTTPException(403,"对照组不接受额外定向跟进；保持正常既有服务。")
+        when=now_iso()
         con.execute("INSERT INTO followups(opportunity_id,owner,status,note,logged_at) VALUES(?,?,?,?,?)",
-                    (data.opportunity_id,data.owner,data.status,data.note,now_iso()))
+                    (data.opportunity_id,data.owner,data.status,data.note,when))
+        # Legacy opportunity followup stays in sync with assigned task.
+        task=con.execute('SELECT task_id,status FROM work_tasks WHERE opportunity_id=?',
+                         (data.opportunity_id,)).fetchone()
+        if task and task['status'] in OPEN:
+            next_status=FOLLOWUP_TO_TASK[data.status]
+            con.execute('UPDATE work_tasks SET status=?,updated_at=?,resolved_at=? WHERE task_id=?',
+                        (next_status,when,when if next_status in ('done','cancelled') else None,task['task_id']))
+            con.execute('INSERT INTO work_task_events(task_id,actor,event_kind,details,logged_at) VALUES(?,?,?,?,?)',
+                        (task['task_id'],data.owner,'followup',data.status+(' · '+data.note if data.note else ''),when))
     return {"ok":True}
 
 @app.get('/api/quality/baseline')
