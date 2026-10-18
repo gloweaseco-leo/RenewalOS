@@ -4,6 +4,7 @@ import json
 import os
 from datetime import date, datetime, timedelta, timezone
 from .db import connect
+from .quality import signal_fingerprint, POLICY_VERSION
 
 ARMS = ('control', 'rules', 'ai')
 
@@ -95,8 +96,7 @@ def recompute(path=None, today=None):
         for opportunity, learner in accepted:
             prev = con.execute('SELECT signals_json FROM opportunities WHERE opportunity_id=?',
                                (opportunity['opportunity_id'],)).fetchone()
-            if prev and prev['signals_json'] != opportunity['signals_json']:
-                con.execute('DELETE FROM ai_advice WHERE opportunity_id=?', (opportunity['opportunity_id'],))
+            # Keep old model/review history; mismatching fingerprint hides stale advice.
             # A household key is scoped to the store to prevent cross-store contamination.
             family_key = f"{learner['store_id']}:{learner['family_id']}"
             con.execute('''INSERT OR IGNORE INTO experiment_assignments
@@ -114,6 +114,8 @@ def list_opportunities(path=None, include_archived=False):
     with connect(path) as con:
         q = '''SELECT o.*, l.family_id,l.guardian_alias,l.store_id,p.course_type,p.expires_on,
                a.arm,aa.advice AS model_advice,aa.source AS model_source,
+               aa.signal_hash AS model_signal_hash,aa.review_status AS model_review_status,
+               aa.uncertainty AS model_uncertainty, aa.policy_version AS model_policy_version,
                (SELECT status FROM followups f WHERE f.opportunity_id=o.opportunity_id ORDER BY followup_id DESC LIMIT 1) AS last_status,
                (SELECT owner FROM followups f WHERE f.opportunity_id=o.opportunity_id ORDER BY followup_id DESC LIMIT 1) AS last_owner
                FROM opportunities o JOIN learners l ON o.learner_id=l.learner_id
@@ -127,10 +129,18 @@ def list_opportunities(path=None, include_archived=False):
             item = dict(row)
             item['signals'] = json.loads(item.pop('signals_json'))
             # Experiment protection: no extra outreach advice is exposed to control operators.
-            if item['arm'] == 'control':
-                item['rule_advice'] = None
+            valid_model = (item['arm'] == 'ai'
+                           and item.get('model_policy_version') == POLICY_VERSION
+                           and item.get('model_signal_hash') == signal_fingerprint(item['signals'], item['course_type']))
+            if not valid_model:
                 item['model_advice'] = None
                 item['model_source'] = None
+                item['model_review_status'] = None
+                item['model_uncertainty'] = None
+            if item['arm'] == 'control':
+                item['rule_advice'] = None
+            item.pop('model_signal_hash', None)
+            item.pop('model_policy_version', None)
             result.append(item)
         return result
 
