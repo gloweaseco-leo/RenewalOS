@@ -1,4 +1,4 @@
-name: RenewalOS G1-A CI
+name: RenewalOS G1-B CI
 on:
   push:
     branches: [main]
@@ -12,14 +12,35 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.11', '3.12']
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: renewalos_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d renewalos_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RENEWAL_PG_MIGRATION_DSN: postgresql://postgres:postgres@127.0.0.1:5432/renewalos_ci
+      RENEWAL_PG_TEST_DSN: postgresql://renewalos_ci_app:g1b-ci-test-password@127.0.0.1:5432/renewalos_ci
+      RENEWAL_PG_CI_BOOTSTRAP: I_ACCEPT_CI_ONLY
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: python -m pip install -e '.[test]'
-      - name: Execute regression tests
+        run: python -m pip install -e '.[test,postgres]'
+      - name: Apply PostgreSQL migration to disposable DB
+        run: python -m scripts.pg_apply --confirm-new-database
+      - name: Provision isolated CI role
+        run: python -m scripts.pg_ci_bootstrap
+      - name: Execute SQLite and PostgreSQL regression tests
         run: python -m pytest -q
       - name: Validate browser JS syntax
         run: |
