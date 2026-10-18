@@ -1,6 +1,7 @@
 """RenewalOS local demo API. Never expose on the public internet."""
 import csv
 import io
+import json
 import os
 import sqlite3
 from contextlib import asynccontextmanager
@@ -14,6 +15,8 @@ from .db import connect,initialize
 from .core import recompute, list_opportunities, list_followups, report, now_iso
 from .demo import load_demo
 from .ai import suggest,AIUnavailable
+from .quality import validate_model_advice,signal_fingerprint,AdviceRejected,POLICY_VERSION
+from .evaluation import baseline_report,benchmark_model
 from .facts import (freeze_cohort,list_cohorts,cycle_timeline,import_contracts,
                     import_cash_events,BusinessRuleError)
 
@@ -73,7 +76,7 @@ async def lifespan(app):
     initialize()
     yield
 
-app=FastAPI(title="RenewalOS Demo",version="0.3.0",lifespan=lifespan,
+app=FastAPI(title="RenewalOS Demo",version="0.4.0",lifespan=lifespan,
     docs_url=None,redoc_url=None,openapi_url=None)
 
 @app.middleware("http")
@@ -94,6 +97,13 @@ async def demo_local_only(request:Request, call_next):
 
 class FreezeRequest(BaseModel):
     store_id: str=Field(min_length=1,max_length=100)
+
+class ReviewRequest(BaseModel):
+    reviewer: str=Field(min_length=1,max_length=50)
+    decision: str
+
+class BenchmarkRequest(BaseModel):
+    max_cases: int=Field(default=4,ge=1,le=4)
 
 class Followup(BaseModel):
     opportunity_id:str=Field(min_length=2,max_length=120)
@@ -214,18 +224,87 @@ def save_followup(data:Followup):
                     (data.opportunity_id,data.owner,data.status,data.note,now_iso()))
     return {"ok":True}
 
-@app.post("/api/opportunities/{opportunity_id}/ai-advice")
+@app.get('/api/quality/baseline')
+def quality_baseline():
+    return baseline_report()
+
+@app.post('/api/quality/benchmark')
+def quality_benchmark(request:BenchmarkRequest):
+    if not all((os.getenv('RENEWAL_AI_BASE_URL'),os.getenv('RENEWAL_AI_API_KEY'),os.getenv('RENEWAL_AI_MODEL'))):
+        raise HTTPException(409,'未配置真实模型，不能运行真实模型评测。')
+    # Explicit, small-batch, synthetic-only, real provider costs may apply.
+    return benchmark_model(suggest, request.max_cases)
+
+@app.post('/api/opportunities/{opportunity_id}/ai-advice')
 def make_ai_advice(opportunity_id:str):
     with connect() as con:
-        row=con.execute("""SELECT o.signals_json,p.course_type,a.arm FROM opportunities o
+        row=con.execute('''SELECT o.signals_json,p.course_type,a.arm FROM opportunities o
          JOIN packages p ON p.package_id=o.package_id JOIN learners l ON o.learner_id=l.learner_id
-         JOIN experiment_assignments a ON a.family_id=l.family_id AND a.store_id=l.store_id WHERE o.opportunity_id=? AND o.is_active=1""",(opportunity_id,)).fetchone()
-        if not row:raise HTTPException(404,"机会不存在")
-        if row["arm"]!="ai":raise HTTPException(403,"只有AI实验组可使用模型建议，避免实验串组。")
-        import json
-        try:advice,source=suggest(json.loads(row["signals_json"]),row["course_type"])
-        except AIUnavailable as e:raise HTTPException(409,str(e)) from e
-        con.execute("""INSERT INTO ai_advice(opportunity_id,advice,source,created_at) VALUES(?,?,?,?)
-           ON CONFLICT(opportunity_id) DO UPDATE SET advice=excluded.advice,source=excluded.source,created_at=excluded.created_at""",
-           (opportunity_id,advice,source,now_iso()))
-    return {"advice":advice,"source":source}
+         JOIN experiment_assignments a ON a.family_id=l.family_id AND a.store_id=l.store_id
+         WHERE o.opportunity_id=? AND o.is_active=1''',(opportunity_id,)).fetchone()
+        if not row:raise HTTPException(404,'机会不存在')
+        if row['arm']!='ai':raise HTTPException(403,'只有AI实验组可申请建议，防止串组。')
+        signals=json.loads(row['signals_json'])
+        course_type=row['course_type']
+    fingerprint=signal_fingerprint(signals,course_type)
+    model=os.getenv('RENEWAL_AI_MODEL','')[:100]
+    try:
+        raw,source=suggest(signals,course_type)
+        result=validate_model_advice(raw,signals)
+    except (AIUnavailable,AdviceRejected) as e:
+        # Record failure without retaining unsafe raw model output.
+        with connect() as con:
+            con.execute('''INSERT INTO ai_advice_attempts
+             (opportunity_id,signal_hash,model_name,status,rejection_reason,attempted_at)
+             VALUES(?,?,?,?,?,?)''', (opportunity_id,fingerprint,model,'rejected',str(e)[:350],now_iso()))
+        raise HTTPException(409,'AI建议被拒绝：'+str(e)) from e
+    stale = False
+    with connect() as con:
+        latest=con.execute('''SELECT o.signals_json,p.course_type,o.is_active FROM opportunities o
+             JOIN packages p ON p.package_id=o.package_id WHERE o.opportunity_id=?''',(opportunity_id,)).fetchone()
+        if not latest or not latest['is_active'] or fingerprint != signal_fingerprint(json.loads(latest['signals_json']),latest['course_type']):
+            con.execute('''INSERT INTO ai_advice_attempts
+             (opportunity_id,signal_hash,model_name,status,rejection_reason,attempted_at)
+             VALUES(?,?,?,?,?,?)''',(opportunity_id,fingerprint,source,'stale','模型调用期间经营事实已变化',now_iso()))
+            stale=True
+        else:
+            con.execute('''INSERT INTO ai_advice
+            (opportunity_id,advice,source,created_at,signal_hash,action_code,evidence_keys_json,
+             uncertainty,review_status,policy_version)
+            VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(opportunity_id) DO UPDATE SET
+            advice=excluded.advice,source=excluded.source,created_at=excluded.created_at,
+            signal_hash=excluded.signal_hash,action_code=excluded.action_code,
+            evidence_keys_json=excluded.evidence_keys_json,uncertainty=excluded.uncertainty,
+            review_status='pending_review',policy_version=excluded.policy_version''',
+            (opportunity_id,result['message'],source,now_iso(),fingerprint,result['action_code'],
+             json.dumps(result['evidence_keys'],ensure_ascii=False),result['uncertainty'],
+             'pending_review',POLICY_VERSION))
+            con.execute('''INSERT INTO ai_advice_attempts
+             (opportunity_id,signal_hash,model_name,status,rejection_reason,attempted_at)
+             VALUES(?,?,?,?,?,?)''',(opportunity_id,fingerprint,source,'accepted',None,now_iso()))
+    if stale:
+        raise HTTPException(409,'模型调用期间事实发生变化，旧建议已作废。')
+    return {'advice':result['message'],'source':source,'action_code':result['action_code'],
+            'evidence_keys':result['evidence_keys'],'uncertainty':result['uncertainty'],
+            'review_status':'pending_review','quality_policy':POLICY_VERSION}
+
+@app.post('/api/opportunities/{opportunity_id}/ai-review')
+def review_ai_advice(opportunity_id:str,review:ReviewRequest):
+    if review.decision not in ('approved','rejected'):
+        raise HTTPException(422,'审核决定仅允许 approved/rejected')
+    with connect() as con:
+        row=con.execute('''SELECT o.is_active,o.signals_json,p.course_type,aa.signal_hash,
+          aa.policy_version,a.arm FROM opportunities o JOIN packages p ON p.package_id=o.package_id
+          JOIN learners l ON l.learner_id=o.learner_id
+          JOIN experiment_assignments a ON a.store_id=l.store_id AND a.family_id=l.family_id
+          JOIN ai_advice aa ON aa.opportunity_id=o.opportunity_id WHERE o.opportunity_id=?''',
+          (opportunity_id,)).fetchone()
+        if not row or row['arm']!='ai':raise HTTPException(404,'不存在可审核的AI组建议')
+        if not row['is_active'] or row['policy_version']!=POLICY_VERSION or row['signal_hash'] != signal_fingerprint(json.loads(row['signals_json']),row['course_type']):
+            raise HTTPException(409,'建议已过期或旧策略生成，不允许审核')
+        con.execute('UPDATE ai_advice SET review_status=? WHERE opportunity_id=?',
+                    (review.decision,opportunity_id))
+        con.execute('''INSERT INTO ai_advice_reviews
+          (opportunity_id,signal_hash,reviewer,decision,reviewed_at) VALUES (?,?,?,?,?)''',
+          (opportunity_id,row['signal_hash'],review.reviewer,review.decision,now_iso()))
+    return {'ok':True,'review_status':review.decision}
