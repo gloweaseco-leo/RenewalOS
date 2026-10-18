@@ -178,6 +178,9 @@ $('reload').addEventListener('click',()=>reload());
 $('org').addEventListener('change',()=>{state.version++;clear($('list'));clear($('detail'));state.selected=null;msg('机构已变更，请刷新并重新验证权限。');});
 $('store').addEventListener('change',()=>{if(state.authBackend==='postgres')$('org').value=$('store').selectedOptions[0]?.dataset.org||'';state.version++;clear($('list'));clear($('detail'));state.selected=null;msg('门店已变更，请刷新并重新验证权限。');});
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{
-  state.tab=b.dataset.tab;state.selected=null;document.querySelectorAll('[data-tab]').forEach(n=>n.classList.toggle('active',n===b));
+  state.tab=b.dataset.tab;state.selected=null;state.items=[];
+  // Avoid clicking stale task records while the next tab is still loading.
+  clear($('list'));clear($('detail'));text('listCount','…');msg('正在读取当前功能的数据…');
+  document.querySelectorAll('[data-tab]').forEach(n=>n.classList.toggle('active',n===b));
   reload();
 }));

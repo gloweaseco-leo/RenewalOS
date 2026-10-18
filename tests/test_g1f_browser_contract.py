@@ -35,4 +35,5 @@ def test_role_tab_and_invalid_scope_fail_closed_in_browser_client():
     assert "$('managementTab').hidden=state.role!=='manager'" in js
     assert "try{context();}catch(err)" in js
     assert "state.tab='opportunities'" in js
+    assert "Avoid clicking stale task records" in js
     assert 'localStorage.setItem' not in js

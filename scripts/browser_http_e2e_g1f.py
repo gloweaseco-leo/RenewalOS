@@ -116,7 +116,7 @@ def browser_suite(base: str) -> None:
                 expect(page.locator('#status')).to_contain_text('PostgreSQL')
 
             def select_case(opp: str) -> None:
-                page.locator('#list button.record').filter(has_text=opp).click()
+                page.locator('#list button.record').filter(has=page.get_by_text(opp,exact=True)).click()
                 expect(page.locator('#detail h3').first).to_contain_text(opp)
 
             def submit_form(heading: str, button: str) -> None:
