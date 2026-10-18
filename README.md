@@ -101,3 +101,12 @@ Read-only **门店经营复盘** provides store-filtered current-stage counts, d
 
 详见 [`docs/RELEASE_G1A.md`](docs/RELEASE_G1A.md) 里的初始化/登录操作和 [`docs/ADR_G1_DATA_ARCHITECTURE.md`](docs/ADR_G1_DATA_ARCHITECTURE.md) 的下一步数据库迁移条件。
 
+
+
+## G1-B PostgreSQL multi-tenant foundation (not yet integrated into public API)
+
+PostgreSQL 16 migration, real-database RLS / composite-foreign-key / cash-event invariant tests,
+scoped read adapter, and CI with isolated PostgreSQL service are under
+`migrations/postgres/`, `renewalos/pg_store.py`, `tests/test_g1b_postgres.py`.
+See `docs/RELEASE_G1B.md`. Legacy `secure_local` remains SQLite-only, localhost-only;
+no real customer data and no production cloud deployment.
