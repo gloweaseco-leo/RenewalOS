@@ -59,10 +59,16 @@ def tenant_transaction(dsn: str, scope: TenantScope, *, roles=("manager", "staff
 
 def list_store_opportunities(dsn, scope: TenantScope):
     with tenant_transaction(dsn, scope) as conn:
+        role = conn.execute('''SELECT role FROM renewalos.store_memberships
+                  WHERE org_id=%s AND store_id=%s AND user_id=%s AND enabled''',
+                  (scope.org_id,scope.store_id,scope.user_id)).fetchone()[0]
+        # A staff member may only read opportunities actually assigned to them.
         result = conn.execute('''SELECT opportunity_id,source_package_id,stage,priority
                  FROM renewalos.renewal_opportunities
                  WHERE org_id=%s AND store_id=%s
-                 ORDER BY priority DESC,opportunity_id''',(scope.org_id,scope.store_id))
+                   AND (%s='manager' OR assigned_user_id=%s)
+                 ORDER BY priority DESC,opportunity_id''',
+                 (scope.org_id,scope.store_id,role,scope.user_id))
         return [dict(zip(('opportunity_id','source_package_id','stage','priority'),row))
                 for row in result.fetchall()]
 
@@ -82,7 +88,8 @@ def list_assigned_tasks(dsn, scope: TenantScope):
 
 
 def contract_net_cash(dsn, scope: TenantScope, contract_id: str):
-    with tenant_transaction(dsn, scope) as conn:
+    # Financial summary is a manager-only surface until distinct finance roles exist.
+    with tenant_transaction(dsn, scope, roles=('manager',)) as conn:
         row=conn.execute('''SELECT coalesce(sum(CASE WHEN kind='payment' THEN amount_cents
                           ELSE -amount_cents END),0) FROM renewalos.cash_events
                     WHERE org_id=%s AND store_id=%s AND contract_id=%s''',

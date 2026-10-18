@@ -89,6 +89,9 @@ def test_missing_session_and_membership_fail_closed():
 
 def test_staff_sees_only_assigned_tasks():
     assert list_assigned_tasks(APP,TenantScope('alpha','east','andy')) == []
+    assert list_store_opportunities(APP,TenantScope('alpha','east','andy')) == []
+    with pytest.raises(TenantAccessError):
+        contract_net_cash(APP,TenantScope('alpha','east','andy'),'alpha-east-c')
     assert len(list_assigned_tasks(APP,TenantScope('alpha','east','alice'))) == 1
 
 
