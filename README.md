@@ -131,3 +131,12 @@ GitHub CI starts PostgreSQL 16, applies migrations and separate DB-role grants, 
 ## G1-G｜公网禁用的上线防护与恢复演练
 
 G1-G新增生产部署强制NO-GO、双最小权限PG连接校验、`/api/ready`本地就绪检查、`python -m scripts.release_audit_g1g`审计和GitHub CI中仅使用合成数据库的`pg_dump`/`pg_restore`恢复对账。**不允许公网、不得接入真实学员或支付数据。**见 `docs/RELEASE_G1G.md`。
+
+
+## G1-H｜企业OIDC身份接入原型（本地合成测试，仍禁止公网）
+
+`RENEWAL_AUTH_BACKEND=oidc` 明确关闭密码登录，采用OIDC授权码 + S256 PKCE、
+一次性state + HttpOnly浏览器绑定Cookie、nonce、RS256/JWKS、issuer/audience、MFA声明校验。
+**只有管理员已映射的(issuer,sub)能登录；邮箱/昵称绝不自动生成门店权限。**
+执行 `python -m scripts.pg_apply_g1h` 仅支持一次性GitHub CI测试数据库。
+详见 `docs/RELEASE_G1H.md`。生产/预发公网仍为`NO_GO`。

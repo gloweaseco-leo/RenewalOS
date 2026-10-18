@@ -19,7 +19,8 @@ TABLES = (
     "renewalos.learners", "renewalos.course_packages", "renewalos.renewal_opportunities",
     "renewalos.work_tasks", "renewalos.followup_events", "renewalos.renewal_contracts",
     "renewalos.cash_events", "renewalos.business_action_events", "renewalos_auth.credentials",
-    "renewalos_auth.sessions", "renewalos_auth.audit", "renewalos.schema_migrations",
+    "renewalos_auth.sessions", "renewalos_auth.audit",
+    "renewalos_auth.oidc_bindings", "renewalos_auth.oidc_flows", "renewalos.schema_migrations",
 )
 
 

@@ -53,7 +53,7 @@ def local_readiness(environ=None, driver=None):
     env = os.environ if environ is None else environ
     try:
         assert_local_only(env)
-        if env.get("RENEWAL_RUNTIME_MODE") != "secure_local" or env.get("RENEWAL_AUTH_BACKEND") != "postgres":
+        if env.get("RENEWAL_RUNTIME_MODE") != "secure_local" or env.get("RENEWAL_AUTH_BACKEND") not in ("postgres", "oidc"):
             return {"ready": False, "profile": "LOCAL_SYNTHETIC_ONLY", "reason": "PG_SECURE_MODE_REQUIRED"}
         assert_dedicated_pg_roles(env)
         if driver is None:
@@ -61,10 +61,13 @@ def local_readiness(environ=None, driver=None):
             driver = _driver()
         with driver.connect(env["RENEWAL_PG_APP_DSN"], connect_timeout=3) as con:
             versions = {row[0] for row in con.execute("SELECT version FROM renewalos.schema_migrations")}
-        if not REQUIRED_MIGRATIONS.issubset(versions):
+        needed = REQUIRED_MIGRATIONS | ({"004_oidc_local"} if env.get("RENEWAL_AUTH_BACKEND")=="oidc" else set())
+        if not needed.issubset(versions):
             return {"ready": False, "profile": "LOCAL_SYNTHETIC_ONLY", "reason": "MIGRATIONS_INCOMPLETE"}
         with driver.connect(env["RENEWAL_PG_AUTH_DSN"], connect_timeout=3) as con:
-            con.execute("SELECT user_id FROM renewalos_auth.credentials LIMIT 0")
+            con.execute("SELECT state_hash FROM renewalos_auth.oidc_flows LIMIT 0"
+                        if env.get("RENEWAL_AUTH_BACKEND")=="oidc"
+                        else "SELECT user_id FROM renewalos_auth.credentials LIMIT 0")
         return {"ready": True, "profile": "LOCAL_SYNTHETIC_ONLY"}
     except Exception:
         return {"ready": False, "profile": "LOCAL_SYNTHETIC_ONLY", "reason": "UNAVAILABLE_OR_BLOCKED"}
