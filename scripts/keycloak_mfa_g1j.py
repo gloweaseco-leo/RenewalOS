@@ -103,26 +103,16 @@ def run():
         params=_callback(otp_response.headers.get('location',''),cfg)
         state=params['state'][0]
         assert state==parse_qs(urlsplit(url).query)['state'][0], 'state altered by provider'
-    result=complete(os.environ['RENEWAL_PG_AUTH_DSN'],cfg,state,cookie,params['code'][0])
-    assert result['user_id']==USER and result['memberships']=={'g1j_org:pool':'manager'}, 'MFA identity not prebound'
-    token=result['access_token']
-    dsn=os.environ['RENEWAL_PG_AUTH_DSN']
-    assert identity(dsn,token)['user_id']==USER
-    assert authorize_store(dsn,token,'g1j_org','pool')['role']=='manager'
-    with psycopg.connect(os.environ['RENEWAL_PG_MIGRATION_DSN']) as con:
-        con.execute("UPDATE renewalos_auth.oidc_bindings SET enabled=false WHERE issuer=%s AND subject=%s",(ISSUER,SUBJECT))
+    # Keycloak completed a *real* password+TOTP challenge and returned an
+    # authorization code. Its unconfigured AMR execution reference does not
+    # provide a signed MFA claim: our application must fail closed here.
     try:
-        identity(dsn,token)
-    except AccessDenied:pass
-    else:raise AssertionError('SECURITY: session survived OIDC binding revocation')
-    # Re-enabling a binding cannot resurrect any session issued before revocation.
-    with psycopg.connect(os.environ['RENEWAL_PG_MIGRATION_DSN']) as con:
-        con.execute("UPDATE renewalos_auth.oidc_bindings SET enabled=true WHERE issuer=%s AND subject=%s",(ISSUER,SUBJECT))
-    try:
-        identity(dsn,token)
-    except AccessDenied:pass
-    else:raise AssertionError('SECURITY: revoked session was resurrected')
-    print('G1-J REAL KEYCLOAK PASSWORD+TOTP OIDC SUCCESS; PREBOUND SESSION PERMANENTLY REVOKED; NO-GO',flush=True)
+        complete(os.environ['RENEWAL_PG_AUTH_DSN'],cfg,state,cookie,params['code'][0])
+    except OIDCRejected as exc:
+        assert str(exc)=='OIDC多因素认证未满足要求', 'Unexpected OIDC rejection reason'
+    else:
+        raise AssertionError('SECURITY: Keycloak without MFA AMR reference was accepted')
+    print('G1-J REAL KEYCLOAK PASSWORD+TOTP EXCHANGED; MISSING SIGNED MFA EVIDENCE REJECTED; NO-GO',flush=True)
 
 
 if __name__=='__main__':run()
