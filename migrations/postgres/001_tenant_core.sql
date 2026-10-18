@@ -196,6 +196,12 @@ DECLARE
   source_payment renewalos.cash_events%ROWTYPE;
   refunded_so_far bigint;
 BEGIN
+  -- Triggers execute before RLS WITH CHECK; reject scope violations BEFORE
+  -- querying amounts, otherwise SQL errors can leak another tenant's state.
+  IF NEW.org_id IS DISTINCT FROM renewalos.scope_org()
+     OR NEW.store_id IS DISTINCT FROM renewalos.scope_store() THEN
+    RAISE EXCEPTION 'tenant scope required for cash events' USING ERRCODE='42501';
+  END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended(
       NEW.org_id || '|' || NEW.store_id || '|' || NEW.contract_id, 0));
   IF NEW.kind = 'payment' THEN

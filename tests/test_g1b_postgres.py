@@ -101,9 +101,12 @@ def test_cross_tenant_and_cross_learner_fk_rejected():
                 VALUES('beta','west','fraud-1','alpha-east-kid','swim','2026-01-01','2026-12-31',10,2,1000)''')
     with pytest.raises(pg.errors.ForeignKeyViolation):
         with pg.connect(ADMIN) as con:
+            con.execute('''INSERT INTO renewalos.course_packages(org_id,store_id,package_id,
+                learner_id,course_type,purchased_on,expires_on,purchased_sessions,remaining_sessions,price_cents)
+                VALUES('alpha','east','fraud-2-package','alpha-east-kid','swim','2026-01-01','2026-12-31',10,2,1000)''')
             con.execute('''INSERT INTO renewalos.renewal_contracts(org_id,store_id,contract_id,
                 source_package_id,learner_id,signed_on,contracted_amount_cents,provenance)
-                VALUES('alpha','east','fraud-2','alpha-east-p','beta-east-kid','2026-10-18',1000,'synthetic')''')
+                VALUES('alpha','east','fraud-2','fraud-2-package','beta-east-kid','2026-10-18',1000,'synthetic')''')
 
 
 def test_money_append_only_refund_boundaries_and_scope():
@@ -128,8 +131,10 @@ def test_money_append_only_refund_boundaries_and_scope():
             con.execute('''INSERT INTO renewalos.cash_events(org_id,store_id,event_id,contract_id,
              occurred_on,kind,amount_cents,refund_of,provenance)
              VALUES('alpha','east','a-refund-over','alpha-east-c','2026-10-18','refund',60000,'a-pay','synthetic')''')
-    with pytest.raises(pg.errors.ForeignKeyViolation):
+    with pytest.raises(pg.errors.CheckViolation):
         with pg.connect(ADMIN) as con:
+            con.execute("SELECT set_config('renewalos.org_id','beta',true)")
+            con.execute("SELECT set_config('renewalos.store_id','east',true)")
             con.execute('''INSERT INTO renewalos.cash_events(org_id,store_id,event_id,contract_id,
               occurred_on,kind,amount_cents,refund_of,provenance)
               VALUES('beta','east','b-bad-ref','beta-east-c','2026-10-18','refund',100,'a-pay','synthetic')''')
