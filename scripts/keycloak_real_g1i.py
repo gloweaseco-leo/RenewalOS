@@ -62,7 +62,10 @@ def run():
                               follow_redirects=False)
             assert login.status_code in (302,303), 'Synthetic Keycloak password login failed'
             target=login.headers.get('location','')
-            assert target.startswith(cfg.redirect_uri), 'Unexpected Keycloak callback URL'
+            if not target.startswith(cfg.redirect_uri):
+                # Never write code/state, cookies, tokens or credentials to CI logs.
+                parsed=urlsplit(target)
+                raise AssertionError('Unexpected Keycloak next step (path only): '+parsed.path)
             q=parse_qs(urlsplit(target).query)
             assert q['code'] and q['state'], 'Keycloak authorization code missing'
             assert q['state'][0]==parse_qs(urlsplit(url).query)['state'][0]
