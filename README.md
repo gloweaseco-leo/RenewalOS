@@ -100,3 +100,4 @@ Read-only **门店经营复盘** provides store-filtered current-stage counts, d
 增加 `RENEWAL_RUNTIME_MODE=secure_local` 的**默认拒绝**API运行模式、密码散列和可撤销会话、门店及员工级只读访问、经理角色控制、独立本地登录页；旧版不安全的演示业务路由全部禁用。当前仍为SQLite本地预览，**未完成PostgreSQL和正式多租户上线能力**。
 
 详见 [`docs/RELEASE_G1A.md`](docs/RELEASE_G1A.md) 里的初始化/登录操作和 [`docs/ADR_G1_DATA_ARCHITECTURE.md`](docs/ADR_G1_DATA_ARCHITECTURE.md) 的下一步数据库迁移条件。
+
