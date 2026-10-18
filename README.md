@@ -1,3 +1,5 @@
+> G1-J local synthetic MFA acceptance / immediate session revocation engineering branch: see [release note](docs/RELEASE_G1J.md). Public deployment remains blocked.
+
 ## G1-E · PostgreSQL 统一身份（本地开发）
 
 身份凭据、会话和机构/门店授权现在可全部保存在 PostgreSQL，不再依赖本机 SQLite。

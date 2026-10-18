@@ -52,7 +52,16 @@ def login(dsn,user,password):
 
 
 def _actor(con,token):
-    row=con.execute('SELECT user_id FROM renewalos_auth.sessions WHERE token_hash=%s AND revoked_at IS NULL AND expires_at>now()',(digest(token),)).fetchone()
+    # A previously issued OIDC session is valid ONLY while its preapproved
+    # issuer+subject mapping still points to the same enabled employee.
+    # This check is performed on every authenticated request, not just login.
+    row=con.execute('''SELECT s.user_id FROM renewalos_auth.sessions AS s
+        LEFT JOIN renewalos_auth.oidc_bindings AS b
+          ON b.issuer=s.oidc_issuer AND b.subject=s.oidc_subject
+          AND b.user_id=s.user_id AND b.enabled
+        WHERE s.token_hash=%s AND s.revoked_at IS NULL AND s.expires_at>now()
+          AND (s.oidc_issuer IS NULL OR b.user_id IS NOT NULL)''',
+        (digest(token),)).fetchone()
     if not row:raise AccessDenied('未认证')
     allowed=memberships(con,row[0])
     if not allowed:raise AccessDenied('未认证')

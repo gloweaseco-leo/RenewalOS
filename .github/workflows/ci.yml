@@ -1,4 +1,4 @@
-name: RenewalOS G1-I IdP interoperability & release safety CI
+name: RenewalOS G1-J MFA session revocation safety CI
 on:
   push:
     branches: [main]
@@ -49,6 +49,8 @@ jobs:
         run: python -m scripts.pg_ci_auth_roles
       - name: Apply G1-H local OIDC security migration
         run: python -m scripts.pg_apply_g1h
+      - name: Apply G1-J session revocation migration
+        run: python -m scripts.pg_apply_g1j
       - name: Execute SQLite and PostgreSQL regression tests
         run: python -m pytest -q
       - name: Run real TCP HTTP business E2E
@@ -98,6 +100,13 @@ jobs:
           SSL_CERT_FILE: /tmp/renewalos-g1i-cert/cert.pem
           NO_PROXY: 127.0.0.1,localhost
         run: python -m scripts.keycloak_real_g1i
+      - name: G1-J real Keycloak TOTP positive and session revocation
+        if: matrix.python-version == '3.11'
+        timeout-minutes: 4
+        env:
+          SSL_CERT_FILE: /tmp/renewalos-g1i-cert/cert.pem
+          NO_PROXY: 127.0.0.1,localhost
+        run: python -m scripts.keycloak_mfa_g1j
       - name: Validate browser JS syntax
         run: |
           node --check static/app.js

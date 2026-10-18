@@ -228,8 +228,10 @@ def _issue_external_session(dsn, issuer, subject):
             raise AccessDenied('外部身份尚未获得门店授权')
         token=secrets.token_urlsafe(32)
         expires=datetime.now(timezone.utc)+timedelta(hours=4)
-        con.execute('''INSERT INTO renewalos_auth.sessions(token_hash,user_id,expires_at)
-                       VALUES(%s,%s,%s)''',(digest(token),user,expires))
+        con.execute('''INSERT INTO renewalos_auth.sessions
+                       (token_hash,user_id,expires_at,oidc_issuer,oidc_subject)
+                       VALUES(%s,%s,%s,%s,%s)''',
+                    (digest(token),user,expires,issuer,subject))
         audit(con,user,'oidc_login','allowed')
         return {'access_token':token,'token_type':'bearer',
                 'expires_on':expires.isoformat(),'user_id':user,
