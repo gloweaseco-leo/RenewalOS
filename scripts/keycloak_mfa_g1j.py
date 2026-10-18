@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import html.parser
+import re
 import os
 import struct
 import time
@@ -112,8 +113,18 @@ def run():
             if res.status_code not in (302,303):
                 # Structural diagnostic only: no TOTP code, cookies or HTML body.
                 f=Forms();f.feed(res.text)
+                class ErrorText(html.parser.HTMLParser):
+                    def __init__(self):super().__init__();self.text=[]
+                    def handle_data(self,data):
+                        value=' '.join(data.strip().split())
+                        if value and re.search(r'invalid|incorrect|error|expired|code|session|try again',value,re.I):
+                            self.text.append(value[:80])
+                err=ErrorText();err.feed(res.text)
+                # CI-only synthetic IdP; never emit OTP, fields' values or cookies.
                 raise AssertionError('OTP not accepted: status '+str(res.status_code)+
-                                     ', returned form ids '+','.join(x['id'] for x in f.forms))
+                                     ', returned form ids '+','.join(x['id'] for x in f.forms)+
+                                     ', hidden field names '+','.join(sorted(otp_form['hidden']))+
+                                     ', safe UI errors '+str(err.text[:5]))
             location=res.headers.get('location','')
             if not location.startswith(cfg.redirect_uri):
                 raise AssertionError('OTP did not complete flow; next path: '+urlsplit(location).path)
