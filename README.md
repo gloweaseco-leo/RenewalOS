@@ -1,6 +1,6 @@
 # RenewalOS — Sports Training Renewal Operations
 
-**G0.6 independent localhost prototype** · no dependency on Aoguan's unsigned `aoguan-webapp` contract.
+**G0.7 independent localhost prototype** · no dependency on Aoguan's unsigned `aoguan-webapp` contract.
 
 A small working loop: sanitized CSV data → explainable renewal signals → household-level experimental arms → staff-recorded followup → actual net paid facts. It **does not** invent AI uplift/ROI; real model advice only runs with a configured endpoint in the AI arm.
 
@@ -79,3 +79,14 @@ To run the complete walkthrough: start locally; click “载入合成数据”; 
 Run `python -m pytest -q` and `node --check static/app.js`. **DO NOT deploy this branch to Vercel**: there is no authentication, user authorization, real multi-tenant storage, privacy lifecycle or production API gateway. The GitHub production branch is intentionally not changed by this stage.
 
 See `docs/RELEASE_G06.md`.
+
+
+## G0.7 — 销售待办与人工任务闭环（本地）
+
+- 机会详情：仅非对照组、已同意联系且仍活跃的合成学员可分配任务；防止一机会重复派单。
+- 左侧「销售待办」：按门店/员工代号筛选，查看今日、逾期、已结束任务；修改负责人、截止日与进度。
+- 在任务中填写人工跟进，旧机会详情跟进记录自动与任务状态同步；操作事件按时间保存。
+- 成交归档后任务仍保留，但不允许继续定向营销；退款且业务重新满足条件，可写明原因重新开启。
+- **无用户认证与正式门店数据权限**，责任人只是本地演示代号；不触达真实客户、不接入生产支付，不可公网部署。
+
+详情见 [`docs/RELEASE_G07.md`](docs/RELEASE_G07.md)。
