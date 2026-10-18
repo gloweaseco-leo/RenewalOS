@@ -240,3 +240,71 @@ def manager_snapshot(dsn,scope:TenantScope):
                 'task_statuses':task_stats,'synthetic_cash_net_cents':cash[0],
                 'cash_event_count':cash[1], 'incremental_roi':None,
                 'disclaimer':'模拟资金事实不是支付机构对账，也不是AI增量收入。'}
+
+
+def opportunity_workbench(dsn, scope:TenantScope, opportunity_id):
+    """One authorization-checked source of truth for the staff/manager UI.
+
+    Staff sees only cases assigned to them. Financial contract/cash details
+    are NEVER queried or returned to staff; managers see synthetic facts only.
+    """
+    with tenant_transaction(dsn,scope) as con:
+        role=_role(con,scope)
+        row=con.execute('''SELECT o.opportunity_id,o.source_package_id,o.learner_id,
+                o.assigned_user_id,o.arm,o.stage,o.priority,o.signals,
+                l.alias,l.contact_consent,p.course_type,p.remaining_sessions,p.expires_on
+            FROM renewalos.renewal_opportunities o
+            JOIN renewalos.learners l ON l.org_id=o.org_id AND l.store_id=o.store_id
+                                    AND l.learner_id=o.learner_id
+            JOIN renewalos.course_packages p ON p.org_id=o.org_id AND p.store_id=o.store_id
+                                    AND p.package_id=o.source_package_id
+            WHERE o.org_id=%s AND o.store_id=%s AND o.opportunity_id=%s
+              AND (%s='manager' OR o.assigned_user_id=%s)''',
+            (scope.org_id,scope.store_id,_id(opportunity_id),role,scope.user_id)).fetchone()
+        if not row:
+            raise BusinessMissing('opportunity not found in authorized scope')
+        fields=('opportunity_id','source_package_id','learner_id','assigned_user_id',
+                'arm','stage','priority','signals','learner_alias','contact_consent',
+                'course_type','remaining_sessions','expires_on')
+        opportunity=dict(zip(fields,row))
+        if opportunity['expires_on'] is not None:
+            opportunity['expires_on']=opportunity['expires_on'].isoformat()
+        task=con.execute('''SELECT task_id,assigned_user_id,due_on,status
+            FROM renewalos.work_tasks WHERE org_id=%s AND store_id=%s AND opportunity_id=%s''',
+            (scope.org_id,scope.store_id,opportunity_id)).fetchone()
+        task_item=dict(zip(('task_id','assigned_user_id','due_on','status'),task)) if task else None
+        if task_item:
+            task_item['due_on']=task_item['due_on'].isoformat()
+        follows=con.execute('''SELECT followup_id,actor_user_id,result,note,recorded_at
+            FROM renewalos.followup_events
+            WHERE org_id=%s AND store_id=%s AND opportunity_id=%s
+            ORDER BY recorded_at,followup_id''',
+            (scope.org_id,scope.store_id,opportunity_id)).fetchall()
+        followups=[dict(zip(('followup_id','actor_user_id','result','note','recorded_at'),r)) for r in follows]
+        for entry in followups:
+            entry['recorded_at']=entry['recorded_at'].isoformat()
+        contract=None
+        cash_events=[]
+        if role=='manager':
+            c=con.execute('''SELECT contract_id,signed_on,contracted_amount_cents,provenance
+                FROM renewalos.renewal_contracts
+                WHERE org_id=%s AND store_id=%s AND source_package_id=%s''',
+                (scope.org_id,scope.store_id,opportunity['source_package_id'])).fetchone()
+            if c:
+                contract=dict(zip(('contract_id','signed_on','contracted_amount_cents','provenance'),c))
+                contract['signed_on']=contract['signed_on'].isoformat()
+                events=con.execute('''SELECT event_id,occurred_on,kind,amount_cents,refund_of,provenance
+                    FROM renewalos.cash_events WHERE org_id=%s AND store_id=%s AND contract_id=%s
+                    ORDER BY occurred_on,created_at,event_id''',
+                    (scope.org_id,scope.store_id,c[0])).fetchall()
+                names=('event_id','occurred_on','kind','amount_cents','refund_of','provenance')
+                cash_events=[dict(zip(names,e)) for e in events]
+                for e in cash_events:
+                    e['occurred_on']=e['occurred_on'].isoformat()
+                contract['net_paid_cents']=sum(e['amount_cents']*(1 if e['kind']=='payment' else -1)
+                                               for e in cash_events)
+        return {'org_id':scope.org_id,'store_id':scope.store_id,
+                'role':role,'opportunity':opportunity,'task':task_item,
+                'followups':followups,'contract':contract,'cash_events':cash_events,
+                'incremental_roi':None,
+                'disclaimer':'全部合同与资金是合成测试事件，不代表真实到账或AI贡献。'}

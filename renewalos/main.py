@@ -88,7 +88,7 @@ async def lifespan(app):
         initialize_access()
     yield
 
-app=FastAPI(title="RenewalOS",version="1.0.0-alpha1",lifespan=lifespan,
+app=FastAPI(title="RenewalOS",version="1.0.0-beta3",lifespan=lifespan,
     docs_url=None,redoc_url=None,openapi_url=None)
 
 @app.middleware("http")
@@ -337,6 +337,12 @@ def pg_opportunities(org_id:str,store_id:str,request:Request):
     from .pg_store import list_store_opportunities
     dsn,scope=_g1c_scope(request,org_id,store_id)
     return {'items':_g1c_execute(list_store_opportunities,dsn,scope)}
+
+@app.get('/api/v1/orgs/{org_id}/stores/{store_id}/opportunities/{opportunity_id}')
+def pg_opportunity_detail(org_id:str,store_id:str,opportunity_id:str,request:Request):
+    from .pg_business import opportunity_workbench
+    dsn,scope=_g1c_scope(request,org_id,store_id)
+    return _g1c_execute(opportunity_workbench,dsn,scope,opportunity_id)
 
 @app.get('/api/v1/orgs/{org_id}/stores/{store_id}/tasks')
 def pg_tasks(org_id:str,store_id:str,request:Request):

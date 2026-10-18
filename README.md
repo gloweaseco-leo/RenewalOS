@@ -114,3 +114,7 @@ no real customer data and no production cloud deployment.
 ## G1-C (development branch) — PostgreSQL authenticated business writes
 
 See [G1-C release/limits](docs/RELEASE_G1C.md). New local-only `/api/v1/orgs/{org}/stores/{store}/` endpoints support manager task assignment, assigned-staff followup, synthetic contract and append-only payment/refund, and manager reporting. Requires `RENEWAL_RUNTIME_MODE=secure_local` plus `RENEWAL_PG_APP_DSN` and **matching** store roles in G1-A local auth and PostgreSQL. 002 migration is tested only on disposable CI database. No real data or public hosting.
+
+## G1-D (development) — 登录后的PostgreSQL经营工作台
+
+本地 `secure_local` 登录页现在提供基于受认证PG业务接口的机会、销售任务、经理复盘及合成续费合同/现金事件操作。需要填写机构代号并选择授权门店；输入机构ID不能替代服务端权限校验。员工只能读取被分配案件的跟进记录，资金信息仅经理可见，仍不得公网使用。详情见 [G1-D发布与限制](docs/RELEASE_G1D.md)。

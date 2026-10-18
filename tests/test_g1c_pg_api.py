@@ -165,3 +165,65 @@ def test_fail_closed_when_not_configured_or_not_logged_in(client,monkeypatch):
     assert client.get(base()+'/opportunities',headers=a).status_code==503
     # Legacy synthetic finance remains disabled when auth mode is on.
     assert client.post('/api/demo/sales/payments',headers=a,json={}).status_code==403
+
+
+def test_g1d_manager_and_staff_authorized_workbench_detail(client):
+    """The G1-D UI reads ONE tenant-scoped detail endpoint, not SQLite mirrors."""
+    man=auth(client,'managerA','A_Strong_Login_Secret_2026')
+    staff=auth(client,'staffA','A_Staff_Login_Secret_2026')
+    other=auth(client,'staffOther','Other_Staff_Secret_2026')
+    # Use an independent source package, so integration tests can run in isolation.
+    with pg.connect(ADMIN) as con:
+        con.execute('''INSERT INTO renewalos.course_packages
+           (org_id,store_id,package_id,learner_id,course_type,purchased_on,expires_on,
+            purchased_sessions,remaining_sessions,price_cents)
+           VALUES('g1ca','pool','g1d-package','g1ca-pool-learner','swim','2026-01-01','2026-12-31',24,2,50000)''')
+        con.execute('''INSERT INTO renewalos.renewal_opportunities
+           (org_id,store_id,opportunity_id,source_package_id,learner_id,arm,priority)
+           VALUES('g1ca','pool','g1d-opp','g1d-package','g1ca-pool-learner','ai',82)''')
+    detail=base()+'/opportunities/g1d-opp'
+    before=client.get(detail,headers=man)
+    assert before.status_code==200,before.text
+    assert before.json()['contract'] is None
+    assert before.json()['opportunity']['priority']==82
+    assert client.get(detail,headers=staff).status_code==404
+    assert client.get(detail,headers=other).status_code==404
+    assert client.get(detail,headers=auth(client,'managerB','B_Strong_Login_Secret_2026')).status_code==403
+    task={'opportunity_id':'g1d-opp','task_id':'g1d-task','assigned_user_id':'staffA','due_on':'2026-11-07'}
+    assert client.post(base()+'/tasks',json=task,headers=man).status_code==200
+    assigned=client.get(detail,headers=staff)
+    assert assigned.status_code==200
+    assert assigned.json()['task']['assigned_user_id']=='staffA'
+    assert assigned.json()['contract'] is None
+    assert assigned.json()['cash_events']==[]
+    assert client.get(detail,headers=other).status_code==404
+    follow={'opportunity_id':'g1d-opp','followup_id':'g1d-follow','result':'no_answer','note':'synthetic-only'}
+    assert client.post(base()+'/followups',json=follow,headers=staff).status_code==200
+    assert client.get(detail,headers=staff).json()['followups'][0]['result']=='no_answer'
+    contract={'opportunity_id':'g1d-opp','contract_id':'g1d-contract','signed_on':'2026-10-18','amount_cents':60000}
+    assert client.post(base()+'/contracts',json=contract,headers=man).status_code==200
+    assert client.post(base()+'/cash-events',json={'contract_id':'g1d-contract','event_id':'g1d-pay',
+           'kind':'payment','amount_cents':50000,'occurred_on':'2026-10-18'},headers=man).status_code==200
+    assert client.post(base()+'/cash-events',json={'contract_id':'g1d-contract','event_id':'g1d-refund',
+           'kind':'refund','amount_cents':15000,'occurred_on':'2026-10-18','refund_of':'g1d-pay'},headers=man).status_code==200
+    done=client.get(detail,headers=man).json()
+    assert done['contract']['contracted_amount_cents']==60000
+    assert done['contract']['net_paid_cents']==35000
+    assert [e['kind'] for e in done['cash_events']]==['payment','refund']
+    staff_view=client.get(detail,headers=staff).json()
+    assert staff_view['contract'] is None and staff_view['cash_events']==[]
+    assert staff_view['incremental_roi'] is None
+    assert client.get(base('g1ca','annex')+'/opportunities/g1d-opp',headers=man).status_code==404
+
+
+def test_g1d_secure_ui_uses_pg_endpoints_only(client):
+    page=client.get('/')
+    assert page.status_code==200
+    assert '销售待办' in page.text and '经理复盘' in page.text
+    js=client.get('/static/secure.js')
+    assert js.status_code==200
+    assert '/api/v1/orgs/' in js.text
+    assert '/api/v1/stores/' not in js.text
+    assert '/api/demo/' not in js.text
+    assert 'localStorage' in js.text
+    assert client.get('/static/app.js').status_code==403

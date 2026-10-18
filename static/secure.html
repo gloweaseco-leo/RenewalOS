@@ -1,18 +1,32 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RenewalOS 安全本地预览</title><link rel="stylesheet" href="/static/secure.css"></head>
-<body><main class="shell">
-<header><strong>RenewalOS</strong><span>G1-A / 本地安全预览</span></header>
-<section class="banner">当前仅用于本地权限验证，尚无 PostgreSQL、生产账户管理与真实客户数据支持。禁止公网部署。</section>
-<section id="loginPanel" class="panel"><h1>员工登录</h1><p>使用本地管理员预先创建的账户。密码仅发送到本机API。</p>
-<form id="loginForm"><label>账户ID<input id="username" autocomplete="username" required></label>
-<label>密码<input id="password" type="password" autocomplete="current-password" required></label>
-<button>登录</button></form></section>
-<section id="workspace" class="panel" hidden><div class="controls"><h1 id="welcome">我的工作台</h1><button id="logout">退出</button></div>
-<label>已授权门店 <select id="store"></select></label>
-<div class="controls"><button id="loadOpportunities">查看机会</button><button id="loadTasks">查看我的任务</button><button id="loadManager">经理复盘</button></div>
-<p id="scopeNote"></p><div class="items" id="results" aria-live="polite"></div></section>
-<p id="status" role="status" aria-live="polite"></p>
-<footer>此界面只展示带门店权限的只读数据。旧版不受保护的演示业务API已被停用；不存在在线生产环境。</footer>
-</main><script src="/static/secure.js"></script></body></html>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RenewalOS · 门店续费经营工作台（本机）</title>
+  <link rel="stylesheet" href="/static/secure.css">
+</head>
+<body>
+<div class="layout">
+  <header class="top"><div><span class="brand-mark">R</span><strong>RenewalOS</strong><span class="minor">续费经营工作台 · G1-D</span></div><span class="environment">仅本地 · 全部资金为模拟</span></header>
+  <div class="banner">安全本地开发预览：需要已授权的本地账户与 PostgreSQL 16 测试数据库。禁止公网部署、真实儿童资料及真实付款录入。账号会话仍由本地 SQLite 管理。</div>
+  <main>
+    <section id="loginPanel" class="panel login">
+      <h1>员工登录</h1><p class="muted">使用管理员预先创建的本地测试账户。登录成功后选择授权门店并填写机构代号，数据库会再次验证机构与门店权限。</p>
+      <form id="loginForm" class="form"><label>账户ID<input id="username" autocomplete="username" required maxlength="64"></label><label>密码<input id="password" type="password" autocomplete="current-password" required></label><button type="submit" class="primary">登录</button></form>
+    </section>
+    <section id="workspace" hidden>
+      <div class="workspace-head"><div><h1 id="welcome">我的经营工作台</h1><p id="scopeNote" class="muted">请选择已授权门店</p></div><button id="logout" type="button" class="secondary">退出登录</button></div>
+      <div class="scope-bar panel"><label>机构代号 <input id="org" autocomplete="off" placeholder="例如 DEMOORG" maxlength="64" pattern="[A-Za-z0-9_-]{2,64}"></label><label>授权门店 <select id="store"></select></label><span id="roleBadge" class="pill">待验证</span><button id="reload" type="button" class="secondary">刷新</button></div>
+      <nav class="tabs" aria-label="经营功能"><button data-tab="opportunities" class="active" type="button">续费机会</button><button data-tab="tasks" type="button">销售待办</button><button data-tab="management" type="button" id="managementTab">经理复盘</button></nav>
+      <div class="columns">
+        <section class="panel list-panel"><div class="panel-title"><h2 id="listTitle">续费机会</h2><span id="listCount" class="pill">—</span></div><div id="list" aria-label="当前列表" class="items"></div></section>
+        <section class="panel detail-panel"><div class="panel-title"><h2 id="detailTitle">业务详情</h2></div><div id="detail"><p class="muted">从左侧选择一条记录。操作后会从PostgreSQL重新读取真实业务状态。</p></div></section>
+      </div>
+    </section>
+    <p id="status" role="status" aria-live="polite"></p>
+  </main>
+  <footer>合成合同/模拟收退款不代表真实支付；正常成交不等于AI增量。未经真实客户数据治理与安全验收不得公网开放。</footer>
+</div>
+<script src="/static/secure.js"></script>
+</body>
+</html>
