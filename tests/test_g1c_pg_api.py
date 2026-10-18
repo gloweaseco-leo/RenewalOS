@@ -132,7 +132,7 @@ def test_cross_tenant_cross_store_and_wrong_staff_denied(client):
     assert client.get(base('g1ca','annex')+'/tasks',headers=staff).status_code==403
     assert client.get(base()+'/management',headers=staff).status_code==403
     wrong={'opportunity_id':'g1ca-pool-opp','followup_id':'colleague-attack','result':'contacted','note':'wrong'}
-    assert client.post(base()+'/followups',json=wrong,headers=colleague).status_code==403
+    assert client.post(base()+'/followups',json=wrong,headers=colleague).status_code==404  # no case-existence leak to unassigned staff
     assert client.post(base()+'/tasks',headers=staff,json={
        'opportunity_id':'g1ca-pool-opp','task_id':'staff-fraud','assigned_user_id':'staffA','due_on':'2026-11-01'}).status_code==403
 

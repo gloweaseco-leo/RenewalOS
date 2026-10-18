@@ -183,8 +183,12 @@ def record_synthetic_cash(dsn,scope:TenantScope,contract_id,event_id,kind,amount
         _id(refund_of)
     with tenant_transaction(dsn,scope,roles=('manager',)) as con:
         _manager(con,scope)
+        # renewal_contracts is append-only and DB app role must NOT have UPDATE.
+        # Serialize via the same advisory lock used by the cash validation trigger.
+        con.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',
+                    (scope.org_id+'|'+scope.store_id+'|'+contract_id,))
         contract=con.execute('''SELECT source_package_id,signed_on,provenance FROM renewalos.renewal_contracts
-           WHERE org_id=%s AND store_id=%s AND contract_id=%s FOR UPDATE''',
+           WHERE org_id=%s AND store_id=%s AND contract_id=%s''',
            (scope.org_id,scope.store_id,contract_id)).fetchone()
         if not contract:
             raise BusinessMissing('contract not found')
