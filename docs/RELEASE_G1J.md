@@ -19,4 +19,6 @@
 
 ## 验收证据
 
-合成PostgreSQL迁移/反向测试、独立Keycloak登录流程以及GitHub Actions运行链接（须取得全绿结果后补充）；PR保持Draft，不合并 `main`。
+**已通过：** [GitHub Actions #39129420116](https://github.com/gloweaseco-leo/RenewalOS/actions/runs/39129420116)，Python 3.11/3.12 每套146项测试通过；PostgreSQL 005撤权、真实Chromium业务链、pg_dump/pg_restore、Keycloak单因素拒绝、Keycloak密码+TOTP正向ID Token及AMR验证、状态重放拒绝均通过。
+
+**严格边界：** 这是一次性Keycloak CI合成账户，不是生产MFA供应商验收，也不是公网预发或生产部署许可。PR保持Draft，不合并 `main`。
