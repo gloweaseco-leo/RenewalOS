@@ -53,8 +53,24 @@ CREATE TABLE IF NOT EXISTS followups (
 );
 CREATE TABLE IF NOT EXISTS ai_advice (
  opportunity_id TEXT PRIMARY KEY REFERENCES opportunities(opportunity_id),
- advice TEXT NOT NULL, source TEXT NOT NULL, created_at TEXT NOT NULL
+ advice TEXT NOT NULL, source TEXT NOT NULL, created_at TEXT NOT NULL,
+ signal_hash TEXT, action_code TEXT, evidence_keys_json TEXT,
+ uncertainty TEXT, review_status TEXT DEFAULT 'pending_review', policy_version TEXT
 );
+CREATE TABLE IF NOT EXISTS ai_advice_attempts (
+ attempt_id INTEGER PRIMARY KEY AUTOINCREMENT, opportunity_id TEXT NOT NULL REFERENCES opportunities(opportunity_id),
+ signal_hash TEXT NOT NULL, model_name TEXT NOT NULL, status TEXT NOT NULL,
+ rejection_reason TEXT, attempted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ai_advice_attempts ON ai_advice_attempts(opportunity_id,attempt_id);
+CREATE TABLE IF NOT EXISTS ai_advice_reviews (
+ review_id INTEGER PRIMARY KEY AUTOINCREMENT,
+ opportunity_id TEXT NOT NULL REFERENCES opportunities(opportunity_id),
+ signal_hash TEXT NOT NULL, reviewer TEXT NOT NULL,
+ decision TEXT NOT NULL CHECK(decision IN ('approved','rejected')),
+ reviewed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ai_reviews ON ai_advice_reviews(opportunity_id,review_id);
 CREATE INDEX IF NOT EXISTS ix_packages_learner ON packages(learner_id);
 CREATE INDEX IF NOT EXISTS ix_att_learner_date ON attendance(learner_id,session_date);
 CREATE INDEX IF NOT EXISTS ix_renewals_package ON renewals(source_package_id,paid_on);
@@ -122,3 +138,11 @@ def initialize(path=None):
                 JOIN learners l ON l.family_id=a.family_id""")
             con.execute('DROP TABLE experiment_assignments_v01')
         con.execute('CREATE INDEX IF NOT EXISTS ix_active_opportunity ON opportunities(is_active,priority)')
+
+        # G0.4 legacy G0.2/G0.3 advice is unvalidated and MUST NOT be served.
+        ai_columns={r['name'] for r in con.execute('PRAGMA table_info(ai_advice)')}
+        additions={'signal_hash':'TEXT','action_code':'TEXT','evidence_keys_json':'TEXT',
+                   'uncertainty':'TEXT','review_status':"TEXT DEFAULT 'pending_review'",'policy_version':'TEXT'}
+        for name,column_type in additions.items():
+            if name not in ai_columns:
+                con.execute(f'ALTER TABLE ai_advice ADD COLUMN {name} {column_type}')
