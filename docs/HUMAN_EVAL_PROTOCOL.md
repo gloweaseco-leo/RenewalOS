@@ -18,3 +18,8 @@ Does evidence-grounded LLM drafting materially help a trained staff member beyon
 case_id | policy_version | model_id | output_sha256 | baseline_sha256 | reviewer_alias | grounded_1_5 | actionable_1_5 | respectful_1_5 | safety_violation | preferred_variant | reason | review_at
 
 **Status: planned protocol. No human study and no external model experiment have been performed in this release.**
+
+
+## G0.5 concrete harness
+
+See `docs/RELEASE_G05.md`: generated anonymized `blind_review_template.csv` and private mapping (`private_answer_key.json`) plus two independently completed reviewer sheets are now supported. The template is **not** a completed human study.
