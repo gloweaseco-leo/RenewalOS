@@ -14,9 +14,10 @@ from pydantic import BaseModel,Field
 from .db import connect,initialize
 from .core import recompute, list_opportunities, list_followups, report, now_iso
 from .demo import load_demo
-from .ai import suggest,AIUnavailable
+from .ai import suggest,suggest_with_telemetry,AIUnavailable
 from .quality import validate_model_advice,signal_fingerprint,AdviceRejected,POLICY_VERSION
 from .evaluation import baseline_report,benchmark_model
+from .benchmark_lab import evaluate_model
 from .facts import (freeze_cohort,list_cohorts,cycle_timeline,import_contracts,
                     import_cash_events,BusinessRuleError)
 
@@ -76,7 +77,7 @@ async def lifespan(app):
     initialize()
     yield
 
-app=FastAPI(title="RenewalOS Demo",version="0.4.0",lifespan=lifespan,
+app=FastAPI(title="RenewalOS Demo",version="0.5.0",lifespan=lifespan,
     docs_url=None,redoc_url=None,openapi_url=None)
 
 @app.middleware("http")
@@ -233,7 +234,12 @@ def quality_benchmark(request:BenchmarkRequest):
     if not all((os.getenv('RENEWAL_AI_BASE_URL'),os.getenv('RENEWAL_AI_API_KEY'),os.getenv('RENEWAL_AI_MODEL'))):
         raise HTTPException(409,'未配置真实模型，不能运行真实模型评测。')
     # Explicit, small-batch, synthetic-only, real provider costs may apply.
-    return benchmark_model(suggest, request.max_cases)
+    # This UI action is explicitly confirmed by the operator and bounded to 4 calls.
+    # Return telemetry only; the private blind-review key is never exposed via API.
+    report, _, _ = evaluate_model(suggest_with_telemetry, request.max_cases)
+    return {**report, 'cases':report['cases_tested'],
+            'machine_passed':report['machine_accepted'],
+            'human_quality_rating':None,'model_incremental_value':None}
 
 @app.post('/api/opportunities/{opportunity_id}/ai-advice')
 def make_ai_advice(opportunity_id:str):
