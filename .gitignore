@@ -5,3 +5,6 @@ __pycache__/
 *.sqlite*
 .env
 .DS_Store
+
+# G0.5 local benchmark artifacts may include non-production model output.
+benchmark_runs/
