@@ -100,7 +100,7 @@ jobs:
           SSL_CERT_FILE: /tmp/renewalos-g1i-cert/cert.pem
           NO_PROXY: 127.0.0.1,localhost
         run: python -m scripts.keycloak_real_g1i
-      - name: G1-J real Keycloak TOTP positive and session revocation
+      - name: G1-J Keycloak TOTP completed but untrusted MFA declaration rejected
         if: matrix.python-version == '3.11'
         timeout-minutes: 4
         env:
