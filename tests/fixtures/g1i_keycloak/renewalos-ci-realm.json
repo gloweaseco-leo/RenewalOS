@@ -22,7 +22,19 @@
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "authentication-methods",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-amr-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -41,6 +53,29 @@
       "email": "synthetic-operator@example.invalid",
       "firstName": "Synthetic",
       "lastName": "Operator"
+    },
+    {
+      "username": "synthetic-mfa-operator",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "synthetic-mfa-operator@example.invalid",
+      "firstName": "Synthetic",
+      "lastName": "MFA",
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "G1J-Disposable-Password-Only",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "CI-only temporary TOTP",
+          "secretData": "{\"value\":\"JBSWY3DPEHPK3PXP\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ],
+      "id": "8e7f51f1-4715-46db-8eb2-d1f37e8a5e33"
     }
   ]
 }
