@@ -20,6 +20,7 @@ from .evaluation import baseline_report,benchmark_model
 from .benchmark_lab import evaluate_model
 from .facts import (freeze_cohort,list_cohorts,cycle_timeline,import_contracts,
                     import_cash_events,BusinessRuleError)
+from .demo_sales import record_contract, record_payment, record_refund, sales_summary
 
 ROOT=Path(__file__).resolve().parent.parent
 SCHEMAS={
@@ -77,7 +78,7 @@ async def lifespan(app):
     initialize()
     yield
 
-app=FastAPI(title="RenewalOS Demo",version="0.5.0",lifespan=lifespan,
+app=FastAPI(title="RenewalOS Demo",version="0.6.0",lifespan=lifespan,
     docs_url=None,redoc_url=None,openapi_url=None)
 
 @app.middleware("http")
@@ -95,6 +96,26 @@ async def demo_local_only(request:Request, call_next):
             if parsed.hostname not in {"localhost","127.0.0.1","::1"} or parsed.scheme not in {"http","https"}:
                 return JSONResponse({"detail":"禁止跨站写入"},status_code=403)
     return await call_next(request)
+
+# G0.6: Synthetic sales events; these are NOT production payment endpoints.
+# Client-generated event IDs permit safe retries without duplicate transactions.
+class DemoContract(BaseModel):
+    source_package_id: str=Field(min_length=2,max_length=120,pattern=r'^[A-Za-z0-9_-]+$')
+    contract_id: str=Field(min_length=2,max_length=120,pattern=r'^[A-Za-z0-9_-]+$')
+    signed_on: date
+    amount_cny: Decimal=Field(gt=0,le=1000000,decimal_places=2)
+
+class DemoPayment(BaseModel):
+    contract_id: str=Field(min_length=2,max_length=120,pattern=r'^[A-Za-z0-9_-]+$')
+    event_id: str=Field(min_length=2,max_length=120,pattern=r'^[A-Za-z0-9_-]+$')
+    event_on: date
+    amount_cny: Decimal=Field(gt=0,le=1000000,decimal_places=2)
+
+class DemoRefund(BaseModel):
+    payment_event_id: str=Field(min_length=2,max_length=120,pattern=r'^[A-Za-z0-9_-]+$')
+    event_id: str=Field(min_length=2,max_length=120,pattern=r'^[A-Za-z0-9_-]+$')
+    event_on: date
+    amount_cny: Decimal=Field(gt=0,le=1000000,decimal_places=2)
 
 class FreezeRequest(BaseModel):
     store_id: str=Field(min_length=1,max_length=100)
@@ -126,7 +147,8 @@ def reset():return {"opportunities":load_demo(),"mode":"SYNTHETIC_DEMO"}
 @app.post("/api/recompute")
 def refresh():return {"opportunities":recompute()}
 @app.get("/api/opportunities")
-def opportunities():return {"items":list_opportunities()}
+def opportunities(include_archived: bool=False):
+    return {"items":list_opportunities(include_archived=include_archived)}
 @app.get("/api/followups/{opportunity_id}")
 def followup_history(opportunity_id: str):
     return {"items": list_followups(opportunity_id=opportunity_id)}
@@ -146,6 +168,33 @@ def cohorts():return {"items":list_cohorts()}
 def timeline(package_id:str):
     try:return cycle_timeline(package_id)
     except BusinessRuleError as e:raise HTTPException(404,str(e)) from e
+
+@app.get('/api/demo/sales/{package_id}')
+def demo_sale_info(package_id: str):
+    try:return sales_summary(package_id)
+    except BusinessRuleError as e:raise HTTPException(404,str(e)) from e
+
+@app.post('/api/demo/sales/contracts')
+def demo_contract(data:DemoContract):
+    try:
+        return record_contract(data.source_package_id,data.contract_id,data.signed_on,cents(str(data.amount_cny)))
+    except BusinessRuleError as e:raise HTTPException(422,str(e)) from e
+
+@app.post('/api/demo/sales/payments')
+def demo_payment(data:DemoPayment):
+    try:
+        result=record_payment(data.contract_id,data.event_id,data.event_on,cents(str(data.amount_cny)))
+        recompute()
+        return result
+    except BusinessRuleError as e:raise HTTPException(422,str(e)) from e
+
+@app.post('/api/demo/sales/refunds')
+def demo_refund(data:DemoRefund):
+    try:
+        result=record_refund(data.payment_event_id,data.event_id,data.event_on,cents(str(data.amount_cny)))
+        recompute()
+        return result
+    except BusinessRuleError as e:raise HTTPException(422,str(e)) from e
 
 @app.post("/api/import/{kind}")
 async def import_csv(kind:str,request:Request):
