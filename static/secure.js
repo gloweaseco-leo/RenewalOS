@@ -24,7 +24,9 @@ async function createFact(kind, resource, route, field, prefix, payload){
   return result;
 }
 function validId(value){return /^[A-Za-z0-9_-]{2,64}$/.test(value);}
-function logoutUI(){state.token=null;state.user=null;state.memberships={};state.authBackend=null;state.role=null;state.selected=null;state.items=[];state.version++;state.drafts={};
+function logoutUI(){state.token=null;state.user=null;state.memberships={};state.authBackend=null;state.org='';state.store='';state.role=null;state.tab='opportunities';state.selected=null;state.items=[];state.version++;state.drafts={};
+  document.querySelectorAll('[data-tab]').forEach(n=>n.classList.toggle('active',n.dataset.tab==='opportunities'));
+  $('managementTab').hidden=true;
   $('loginPanel').hidden=false;$('workspace').hidden=true;clear($('list'));clear($('detail'));text('roleBadge','未认证');}
 async function api(url,body){const headers={'Accept':'application/json'};
   if(state.token)headers.Authorization='Bearer '+state.token;
@@ -42,6 +44,8 @@ function context(){const org=$('org').value.trim(),store=$('store').value;
   const key=state.authBackend==='postgres'?org+':'+store:store;
   if(!state.token||!state.memberships[key])throw Error('当前账户没有该机构/门店权限');
   state.org=org;state.store=store;state.role=state.memberships[key];
+  $('managementTab').hidden=state.role!=='manager';
+  if(state.role!=='manager' && state.tab==='management'){state.tab='opportunities';state.selected=null;document.querySelectorAll('[data-tab]').forEach(n=>n.classList.toggle('active',n.dataset.tab==='opportunities'));}
   text('roleBadge',state.role==='manager'?'经理':'员工');
   text('scopeNote',org+' / '+store+' / '+state.user+' · PostgreSQL业务数据');
 }
@@ -62,7 +66,8 @@ function form(title,fields,caption,submit){const section=el('section',undefined,
 }
 function cents(value){const n=Number(value);if(!Number.isFinite(n)||n<=0||!/^\d+(?:\.\d{1,2})?$/.test(value))throw Error('金额需为大于零的人民币元，最多两位小数');return Math.round(n*100);}
 async function reload({keepSelection=false}={}){
-  context();const v=++state.version;
+  const v=++state.version;
+  try{context();}catch(err){state.items=[];state.selected=null;clear($('list'));clear($('detail'));text('listCount','—');msg(err.message,true);return;}
   text('listTitle',state.tab==='management'?'门店经营复盘':state.tab==='tasks'?'销售待办':'续费机会');
   const part=state.tab==='management'?'management':state.tab;
   try{const data=await api(url(part));if(v!==state.version)return;
