@@ -1,3 +1,8 @@
+## G1-E · PostgreSQL 统一身份（本地开发）
+
+身份凭据、会话和机构/门店授权现在可全部保存在 PostgreSQL，不再依赖本机 SQLite。
+配置 `RENEWAL_AUTH_BACKEND=postgres` 时，身份与业务 DSN 必须使用**不同权限的数据库角色**；旧仅含门店ID的接口禁用，前端显示 `机构 / 门店` 唯一授权范围。GitHub CI 负责实际 TCP HTTP + PostgreSQL 端到端回归；依然 **不得公网部署或使用真实儿童客户数据**。详见 `docs/RELEASE_G1E.md`。
+
 # RenewalOS — Sports Training Renewal Operations
 
 **G0.8 independent localhost prototype** · no dependency on Aoguan's unsigned `aoguan-webapp` contract.

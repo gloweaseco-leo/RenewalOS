@@ -78,14 +78,27 @@ def convert(kind,r):
         return (r["event_id"],r["contract_id"],str_date(r["event_on"]),r["kind"],value,refund_of)
     raise ValueError("未知数据类型")
 
+def _pg_auth_active():
+    backend=os.getenv('RENEWAL_AUTH_BACKEND','sqlite')
+    if backend not in ('sqlite','postgres'):
+        raise RuntimeError('未知身份后端，拒绝启动')
+    return backend=='postgres'
+
+
 @asynccontextmanager
 async def lifespan(app):
     mode=os.getenv('RENEWAL_RUNTIME_MODE','demo')
     if mode not in ('demo','secure_local'):
         raise RuntimeError('不支持的运行模式；拒绝在未知配置下启动')
-    initialize()
-    if mode == 'secure_local':
-        initialize_access()
+    if mode=='secure_local' and _pg_auth_active():
+        auth_dsn=os.getenv('RENEWAL_PG_AUTH_DSN','')
+        app_dsn=os.getenv('RENEWAL_PG_APP_DSN','')
+        if not auth_dsn or not app_dsn or auth_dsn==app_dsn:
+            raise RuntimeError('PostgreSQL identity and business must use distinct configured roles')
+        # G1-E: never create or read a SQLite identity/business DB in PG mode.
+    else:
+        initialize()
+        if mode == 'secure_local': initialize_access()
     yield
 
 app=FastAPI(title="RenewalOS",version="1.0.0-beta3",lifespan=lifespan,
@@ -212,7 +225,11 @@ def _bearer(request:Request):
 @app.post('/api/auth/login')
 def local_login(credentials:LocalCredentials):
     _require_secure()
-    try: return access_login(credentials.username,credentials.password)
+    try:
+        if _pg_auth_active():
+            from .pg_auth import login
+            return login(os.environ['RENEWAL_PG_AUTH_DSN'],credentials.username,credentials.password)
+        return access_login(credentials.username,credentials.password)
     except AccessDenied as exc:
         raise HTTPException(status_code=401,detail='账号或密码错误') from exc
 
@@ -220,7 +237,11 @@ def local_login(credentials:LocalCredentials):
 @app.post('/api/auth/logout')
 def local_logout(request:Request):
     _require_secure()
-    try: access_logout(_bearer(request))
+    try:
+        if _pg_auth_active():
+            from .pg_auth import logout
+            logout(os.environ['RENEWAL_PG_AUTH_DSN'],_bearer(request))
+        else: access_logout(_bearer(request))
     except AccessDenied as exc: raise HTTPException(status_code=401,detail='未认证') from exc
     return {'ok':True}
 
@@ -228,12 +249,19 @@ def local_logout(request:Request):
 @app.get('/api/v1/me')
 def local_me(request:Request):
     _require_secure()
-    try: return access_identity(_bearer(request))
+    try:
+        if _pg_auth_active():
+            from .pg_auth import identity
+            return identity(os.environ['RENEWAL_PG_AUTH_DSN'],_bearer(request))
+        return access_identity(_bearer(request))
     except AccessDenied as exc: raise HTTPException(status_code=401,detail='未认证') from exc
 
 
 def _secure_membership(request:Request,store_id:str,roles=None):
     _require_secure()
+    if _pg_auth_active():
+        # Legacy store-only routes are ambiguous when two orgs share a store ID.
+        raise HTTPException(404,'旧版门店接口已禁用')
     try:
         return authorize_store(_bearer(request),store_id,roles)
     except AccessDenied as exc:
@@ -293,7 +321,16 @@ def _g1c_scope(request:Request,org_id:str,store_id:str):
     if os.getenv('RENEWAL_RUNTIME_MODE') != 'secure_local':
         raise HTTPException(404,'接口不存在')
     from .pg_store import TenantScope,TenantAccessError,tenant_transaction
-    principal=_secure_membership(request,store_id,{'manager','staff'})
+    if _pg_auth_active():
+        from .pg_auth import authorize_store
+        try:
+            principal=authorize_store(os.environ['RENEWAL_PG_AUTH_DSN'],_bearer(request),org_id,store_id)
+        except AccessDenied as exc:
+            if str(exc)=='未认证':
+                raise HTTPException(401,'未认证') from exc
+            raise HTTPException(403,'没有该机构/门店的授权') from exc
+    else:
+        principal=_secure_membership(request,store_id,{'manager','staff'})
     dsn=os.getenv('RENEWAL_PG_APP_DSN','')
     if not dsn:
         raise HTTPException(503,'PostgreSQL尚未配置')

@@ -1,7 +1,7 @@
 'use strict';
 // No localStorage access: in-memory session only. All business reads/writes go to PostgreSQL-scoped /api/v1/orgs/... routes.
 const $=id=>document.getElementById(id);
-const state={token:null,user:null,memberships:{},org:'',store:'',role:null,tab:'opportunities',items:[],selected:null,version:0,drafts:{}};
+const state={token:null,user:null,memberships:{},authBackend:null,org:'',store:'',role:null,tab:'opportunities',items:[],selected:null,version:0,drafts:{}};
 const CODES={open:'待处理',assigned:'已分配',contacted:'已跟进',signed:'已签约',paid:'已收款',closed:'已关闭',
   control:'对照组',rules:'规则组',ai:'AI组',in_progress:'跟进中',waiting:'待反馈',done:'已完成',cancelled:'已取消',
   contacted:'已联系',no_answer:'未接通',customer_declined:'客户拒绝',followup_later:'稍后跟进'};
@@ -24,7 +24,7 @@ async function createFact(kind, resource, route, field, prefix, payload){
   return result;
 }
 function validId(value){return /^[A-Za-z0-9_-]{2,64}$/.test(value);}
-function logoutUI(){state.token=null;state.user=null;state.memberships={};state.role=null;state.selected=null;state.items=[];state.version++;state.drafts={};
+function logoutUI(){state.token=null;state.user=null;state.memberships={};state.authBackend=null;state.role=null;state.selected=null;state.items=[];state.version++;state.drafts={};
   $('loginPanel').hidden=false;$('workspace').hidden=true;clear($('list'));clear($('detail'));text('roleBadge','未认证');}
 async function api(url,body){const headers={'Accept':'application/json'};
   if(state.token)headers.Authorization='Bearer '+state.token;
@@ -39,8 +39,9 @@ async function api(url,body){const headers={'Accept':'application/json'};
 function url(part=''){return '/api/v1/orgs/'+encodeURIComponent(state.org)+'/stores/'+encodeURIComponent(state.store)+'/'+part;}
 function context(){const org=$('org').value.trim(),store=$('store').value;
   if(!validId(org)||!validId(store))throw Error('请填写有效机构代号并选择授权门店');
-  if(!state.token||!state.memberships[store])throw Error('当前账户没有该门店权限');
-  state.org=org;state.store=store;state.role=state.memberships[store];
+  const key=state.authBackend==='postgres'?org+':'+store:store;
+  if(!state.token||!state.memberships[key])throw Error('当前账户没有该机构/门店权限');
+  state.org=org;state.store=store;state.role=state.memberships[key];
   text('roleBadge',state.role==='manager'?'经理':'员工');
   text('scopeNote',org+' / '+store+' / '+state.user+' · PostgreSQL业务数据');
 }
@@ -154,9 +155,15 @@ function renderManager(report){const pane=$('detail');clear(pane);if(!report)ret
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button');btn.disabled=true;
   try{const data=await api('/api/auth/login',{username:$('username').value.trim(),password:$('password').value});
-    state.token=data.access_token;state.memberships=data.memberships||{};state.user=data.user_id;
+    state.token=data.access_token;state.memberships=data.memberships||{};state.user=data.user_id;state.authBackend=data.identity_backend||'sqlite';
     $('password').value='';const selector=$('store');clear(selector);
-    for(const [store,role] of Object.entries(state.memberships)){const opt=el('option',store+' / '+name(role));opt.value=store;selector.append(opt);}
+    for(const [key,role] of Object.entries(state.memberships)){
+      const compound=state.authBackend==='postgres';
+      const pair=compound?key.split(':'):[null,key];
+      const opt=el('option',(compound?pair[0]+' / ':'')+pair[1]+' / '+name(role));
+      opt.value=pair[1];opt.dataset.org=pair[0]||'';selector.append(opt);
+    }
+    if(state.authBackend==='postgres'){ $('org').value=selector.selectedOptions[0]?.dataset.org||''; }
     $('loginPanel').hidden=true;$('workspace').hidden=false;text('welcome',data.user_id+' 的续费经营工作台');
     msg('已登录。填写机构代号，验证数据库所属机构与门店后才能查看业务。');
   }catch(err){logoutUI();msg(err.message,true);}finally{btn.disabled=false;}
@@ -164,7 +171,7 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=
 $('logout').addEventListener('click',async()=>{try{if(state.token)await api('/api/auth/logout',{});}catch(_e){}logoutUI();msg('已退出，未在浏览器保存会话。');});
 $('reload').addEventListener('click',()=>reload());
 $('org').addEventListener('change',()=>{state.version++;clear($('list'));clear($('detail'));state.selected=null;msg('机构已变更，请刷新并重新验证权限。');});
-$('store').addEventListener('change',()=>{state.version++;clear($('list'));clear($('detail'));state.selected=null;msg('门店已变更，请刷新并重新验证权限。');});
+$('store').addEventListener('change',()=>{if(state.authBackend==='postgres')$('org').value=$('store').selectedOptions[0]?.dataset.org||'';state.version++;clear($('list'));clear($('detail'));state.selected=null;msg('门店已变更，请刷新并重新验证权限。');});
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{
   state.tab=b.dataset.tab;state.selected=null;document.querySelectorAll('[data-tab]').forEach(n=>n.classList.toggle('active',n===b));
   reload();
