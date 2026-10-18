@@ -15,7 +15,7 @@ const el=(tag, text, cls)=>{const e=document.createElement(tag);if(text!==undefi
 const clear=(node)=>{while(node.firstChild)node.firstChild.remove();};
 function toast(message){$('toast').textContent=message;$('toast').style.display='block';clearTimeout(window._toastTimeout);window._toastTimeout=setTimeout(()=>$('toast').style.display='none',4200);}
 async function call(url,options={}){let response=await fetch(url,options);let data=await response.json().catch(()=>({}));if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'服务暂时不可用');return data;}
-function showView(name){document.querySelectorAll('.page').forEach(n=>n.classList.toggle('visible',n.id===name));document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===name));const conf={opportunities:['续费机会池','把续费机会变成行动','基于事实识别需要关注的客户，辅助员工跟进，记录真实成交。'],tasks:['销售待办','今日销售任务与结果追踪','任务分配、到期提醒、操作历史与续费合同事实保持关联。'],insights:['经营验证','衡量真实经营贡献','流水不等于增量价值。没有成熟实验，不声称AI带来收益。'],import:['CSV数据导入','独立的数据接入方式','不依赖奥冠系统；当前只允许导入合法授权的去识别化数据。']}[name];$('viewName').textContent=conf[0];$('pageTitle').textContent=conf[1];$('pageDescription').textContent=conf[2];}
+function showView(name){document.querySelectorAll('.page').forEach(n=>n.classList.toggle('visible',n.id===name));document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===name));const conf={opportunities:['续费机会池','把续费机会变成行动','基于事实识别需要关注的客户，辅助员工跟进，记录真实成交。'],tasks:['销售待办','今日销售任务与结果追踪','任务分配、到期提醒、操作历史与续费合同事实保持关联。'],management:['门店经营复盘','管理每一笔续费机会','查看任务异常、实际流程覆盖和关联模拟资金事实，不夸大AI成果。'],insights:['经营验证','衡量真实经营贡献','流水不等于增量价值。没有成熟实验，不声称AI带来收益。'],import:['CSV数据导入','独立的数据接入方式','不依赖奥冠系统；当前只允许导入合法授权的去识别化数据。']}[name];$('viewName').textContent=conf[0];$('pageTitle').textContent=conf[1];$('pageDescription').textContent=conf[2];}
 function tag(arm){return arm==='ai'?'AI组':arm==='rules'?'规则组':'对照组';}
 function renderList(){const q=$('search').value.trim().toLowerCase(),arm=$('arm').value,status=$('status').value;let list=entries.filter(r=>(arm==='all'||r.arm===arm)&&(status==='all'||(status==='active'?r.is_active:!r.is_active))&&[r.learner_id,r.guardian_alias,r.course_type].join('|').toLowerCase().includes(q));$('listCount').textContent=list.length;const target=$('opportunityList');clear(target);if(!list.length){target.append(el('div','没有匹配的续费机会。','empty'));return;}
   list.forEach(r=>{const btn=el('button',undefined,'opp-row'+(selected===r.opportunity_id?' selected':''));btn.type='button';const icon=el('div',r.learner_id.slice(-2),'opp-icon');const main=el('div',undefined,'opp-main');main.append(el('strong',r.guardian_alias+' · '+r.learner_id),el('p',r.reason));const meta=el('div',undefined,'opp-meta');meta.append(el('span',r.is_active?'优先级 '+r.priority:'已结束/归档',r.is_active?'score':'tag'),el('span',tag(r.arm),'tag '+r.arm));btn.append(icon,main,meta);btn.addEventListener('click',()=>{selected=r.opportunity_id;renderList();renderDetail();});target.append(btn);});
@@ -139,8 +139,50 @@ function attachTimeline(node,r){
   }catch(e){toast(e.message);}});
 }
 function renderReport(data){$('netPaid').textContent=fmtMoney(data.net_paid_cny);$('followupEvents').textContent=data.followup_records;$('attributionNote').textContent=data.attribution_note;let holder=$('armBars');clear(holder);const n=Math.max(1,...Object.values(data.arm_family_counts));[['control','正常运营'],['rules','规则辅助'],['ai','AI辅助']].forEach(([arm,name])=>{let line=el('div',undefined,'arm-row');line.append(el('span',name));let track=el('div',undefined,'track');let fill=el('div',undefined,'fill');fill.style.width=(100*data.arm_family_counts[arm]/n)+'%';track.append(fill);line.append(track,el('strong',data.arm_family_counts[arm]+'户'));holder.append(line);});}
-async function refresh(){try{const [data,r,status,cohorts,queue]=await Promise.all([call('/api/opportunities?include_archived=true'),call('/api/report'),call('/api/health'),call('/api/cohorts'),call('/api/tasks')]);entries=data.items;aiConfigured=status.ai_configured;const named=aiConfigured?'真实AI已配置':'规则模式（未配置AI）';$('modelStatus').textContent=named;$('statAI').textContent=aiConfigured?'可调用':'未连接';$('statCount').textContent=entries.filter(x=>x.is_active).length;$('statHigh').textContent=entries.filter(x=>x.is_active&&x.priority>=65).length;$('statFollowed').textContent=entries.filter(x=>x.last_status).length;$('modelBenchmark').disabled=!aiConfigured;renderList();renderDetail();renderReport(r);renderCohorts(cohorts.items);tasks=queue.items;renderTasks(queue.summary);}catch(e){toast(e.message);}}
-document.querySelectorAll('.nav').forEach(n=>n.addEventListener('click',()=>showView(n.dataset.view)));
+async function refresh(){try{const [data,r,status,cohorts,queue]=await Promise.all([call('/api/opportunities?include_archived=true'),call('/api/report'),call('/api/health'),call('/api/cohorts'),call('/api/tasks')]);entries=data.items;aiConfigured=status.ai_configured;const named=aiConfigured?'真实AI已配置':'规则模式（未配置AI）';$('modelStatus').textContent=named;$('statAI').textContent=aiConfigured?'可调用':'未连接';$('statCount').textContent=entries.filter(x=>x.is_active).length;$('statHigh').textContent=entries.filter(x=>x.is_active&&x.priority>=65).length;$('statFollowed').textContent=entries.filter(x=>x.last_status).length;$('modelBenchmark').disabled=!aiConfigured;renderList();renderDetail();renderReport(r);renderCohorts(cohorts.items);tasks=queue.items;renderTasks(queue.summary);if(document.getElementById('management').classList.contains('visible'))await refreshManager();}catch(e){toast(e.message);}}
+// G0.8 read-only manager view. Text always uses textContent through el().
+async function refreshManager(){
+  const filter=$('managerStore').value.trim();
+  const query=filter?'?store_id='+encodeURIComponent(filter):'';
+  try{
+    const data=await call('/api/management/overview'+query);
+    $('mgOpportunities').textContent=data.summary.opportunities;
+    $('mgActive').textContent=data.summary.active_non_control;
+    $('mgOverdue').textContent=data.summary.task_overdue;
+    $('mgNetCash').textContent=fmtMoney(data.summary.linked_net_cash_cny);
+    const stage=$('mgStages');clear(stage);
+    Object.entries(data.stage_counts).forEach(([key,n])=>{
+      const line=el('div',undefined,'manager-metric');line.append(el('span',data.stage_labels[key]),el('strong',n));stage.append(line);
+    });
+    const milestones=$('mgMilestones');clear(milestones);
+    const names={assigned:'有任务',followed:'有人工跟进',contracted:'关联新合同',linked_net_paid:'关联净付款>0',legacy_net_paid:'只有旧账净付款',control:'正常运营对照组'};
+    Object.entries(data.milestones).forEach(([key,n])=>{const line=el('div',undefined,'manager-metric');line.append(el('span',names[key]||key),el('strong',n));milestones.append(line);});
+    const alerts=$('mgAlerts');clear(alerts);
+    if(!data.alerts.length)alerts.append(el('p','当前无符合异常规则的事项。','small'));
+    data.alerts.forEach(a=>{const button=el('button',undefined,'manager-case');button.type='button';
+      button.append(el('strong',a.label),el('small',a.store_id+' · '+(a.owner||'未分配')+' · '+a.opportunity_id));
+      button.addEventListener('click',()=>openManagerCase(a.opportunity_id,a.task_id));alerts.append(button);
+    });
+    const owners=$('mgOwners');clear(owners);
+    if(!data.owner_workload.length)owners.append(el('p','尚无已分配任务。','small'));
+    data.owner_workload.forEach(o=>{const line=el('div',undefined,'manager-metric');line.append(el('span',o.owner+' · 未结束'+o.open+' · 逾期'+o.overdue),el('strong',o.total+'项'));owners.append(line);});
+    const cases=$('mgCases');clear(cases);
+    if(!data.cases.length)cases.append(el('p','尚无续费机会。请先载入本地合成数据。','small'));
+    data.cases.forEach(c=>{const button=el('button',undefined,'manager-case');button.type='button';
+      button.append(el('strong',c.guardian_alias+' · '+c.stage_label),
+        el('small',c.store_id+' · '+c.opportunity_id+' · '+(c.owner||'未分配')+' · 净收款'+fmtMoney(c.net_paid_cny)));
+      button.addEventListener('click',()=>openManagerCase(c.opportunity_id,c.task_id));cases.append(button);
+    });
+    $('mgLimitations').textContent=data.limitations.join(' ')+(data.case_count>data.cases.length?' 仅展示前'+data.cases.length+'条案例。':'');
+  }catch(e){toast('管理快照读取失败：'+e.message);}
+}
+function openManagerCase(opportunityId,taskId){
+  if(taskId){taskSelected=taskId;$('taskStore').value='';$('taskOwner').value='';$('taskDue').value='all';showView('tasks');renderTasks();}
+  else{selected=opportunityId;$('status').value='all';showView('opportunities');renderList();renderDetail();}
+}
+$('managerReload').addEventListener('click',refreshManager);
+$('managerStore').addEventListener('change',refreshManager);
+document.querySelectorAll('.nav').forEach(n=>n.addEventListener('click',()=>{showView(n.dataset.view);if(n.dataset.view==='management')refreshManager();}));
 $('loadDemo').addEventListener('click',async()=>{if(entries.length&&!confirm('重新载入合成数据会清空本地当前所有导入和跟进记录，确定继续吗？'))return;try{await call('/api/demo/reset',{method:'POST'});selected=null;toast('已载入36名合成学员，所有数据均为模拟');await refresh();}catch(e){toast(e.message);}});
 $('recompute').addEventListener('click',async()=>{try{const r=await call('/api/recompute',{method:'POST'});toast('重新识别完成，得到'+r.opportunities+'条有效机会');await refresh();}catch(e){toast(e.message);}});
 function renderCohorts(cohorts){let container=$('cohortReports');clear(container);if(!cohorts.length){container.append(el('p','尚无已冻结队列；冻结前的机会池不构成实验样本。','small'));return;}

@@ -8,6 +8,7 @@
     <nav aria-label="主导航">
       <button class="nav active" data-view="opportunities"><span>▦</span> 续费机会池</button>
       <button class="nav" data-view="tasks"><span>☷</span> 销售待办</button>
+      <button class="nav" data-view="management"><span>▥</span> 门店经营复盘</button>
       <button class="nav" data-view="insights"><span>◉</span> 经营验证</button>
       <button class="nav" data-view="import"><span>⇧</span> CSV数据导入</button>
     </nav>
@@ -15,7 +16,7 @@
   </aside>
   <main class="main">
     <div class="topbar"><div class="crumb">RenewalOS <span>/</span> <span id="viewName">续费机会池</span></div><div class="topright"><span id="modelStatus" class="pill">检测模型中</span><span class="avatar">RO</span></div></div>
-    <section class="header"><div><div class="eyebrow">G0.7 · STAFF TASK WORKBENCH</div><h1 id="pageTitle">把续费机会变成行动</h1><p id="pageDescription">基于事实识别需要关注的客户，辅助员工跟进，记录真实成交。不把自然续费算成AI收益。</p></div><div class="header-actions"><button class="button light" id="loadDemo">载入合成数据</button><button class="button primary" id="recompute">重新计算机会 →</button></div></section>
+    <section class="header"><div><div class="eyebrow">G0.8 · MANAGER OPERATIONS REVIEW</div><h1 id="pageTitle">把续费机会变成行动</h1><p id="pageDescription">基于事实识别需要关注的客户，辅助员工跟进，记录真实成交。不把自然续费算成AI收益。</p></div><div class="header-actions"><button class="button light" id="loadDemo">载入合成数据</button><button class="button primary" id="recompute">重新计算机会 →</button></div></section>
     <div class="warning"><strong>演示数据与合规边界</strong> · 目前仅供本地原型验证。数据应使用假名ID，不导入电话、姓名、身份证、儿童健康信息；未配置真实模型时只显示规则建议。</div>
     <section id="opportunities" class="page visible">
       <div class="stat-grid"><article class="stat"><span>当前续费机会</span><strong id="statCount">—</strong><small>可核查的规则候选，不是预测流失人数</small></article><article class="stat"><span>高优先级</span><strong id="statHigh">—</strong><small>优先级是业务启发式分值</small></article><article class="stat"><span>有跟进记录</span><strong id="statFollowed">—</strong><small>非对照组中已提交的动作</small></article><article class="stat"><span>AI建议服务</span><strong id="statAI">—</strong><small>仅在配置API后调用真实模型</small></article></div>
@@ -41,6 +42,28 @@
       </div>
       <p class="small">G0.7 本地合成演示：没有真实账号权限和自动消息发送；销售动作应由有授权的员工执行。</p>
     </section>
+    <section id="management" class="page">
+      <div class="card work-filters manager-filters">
+        <label>门店代号（空白为所有本机合成门店）<input id="managerStore" placeholder="DEMO-STORE" maxlength="100"/></label>
+        <button class="button light" id="managerReload">刷新经营快照</button>
+      </div>
+      <div class="stat-grid">
+        <article class="stat"><span>累计识别机会</span><strong id="mgOpportunities">—</strong><small>一条课包只计一次</small></article>
+        <article class="stat"><span>当前活跃机会（非对照）</span><strong id="mgActive">—</strong><small>不计正常服务对照组</small></article>
+        <article class="stat"><span>逾期未结束任务</span><strong id="mgOverdue">—</strong><small>需经理核查，不代表员工绩效</small></article>
+        <article class="stat"><span>新合同关联净现金（模拟）</span><strong id="mgNetCash">—</strong><small>与旧版流水分别计，不能相加</small></article>
+      </div>
+      <div class="two-col manager-panels">
+        <div class="card"><h2>互斥经营阶段</h2><p>每条机会仅归入一个当前阶段；非真实漏斗转化率，也不是AI归因。</p><div id="mgStages" class="manager-metrics"></div></div>
+        <div class="card"><h2>过程里程碑覆盖</h2><p>分配、跟进、签约及净付款可能跨步骤，各项不是递进转化漏斗。</p><div id="mgMilestones" class="manager-metrics"></div></div>
+      </div>
+      <div class="two-col manager-panels">
+        <div class="card"><h2>需要人工处理的异常</h2><p>按紧急程度排序，不向对照组制造营销任务。</p><div id="mgAlerts" class="manager-cases"></div></div>
+        <div class="card"><h2>员工任务负荷（不用于绩效排名）</h2><div id="mgOwners" class="manager-metrics"></div></div>
+      </div>
+      <div class="card manager-panels"><h2>机会—任务—成交复盘</h2><p>点击一条记录跳转至机会详情或相关任务；收款只是账面事实，不证明由AI造成。</p><div id="mgCases" class="manager-cases"></div></div>
+      <p id="mgLimitations" class="detail-note">本机合成数据演示；未建立实验因果估计、真实支付或ROI。</p>
+    </section>
     <section id="insights" class="page"><div class="stat-grid"><article class="stat"><span>旧版续费记录净额（演示）</span><strong id="netPaid">—</strong><small>仅旧版 renewals；新合同资金见冻结队列，不能直接相加</small></article><article class="stat"><span>累计跟进记录</span><strong id="followupEvents">—</strong><small>仅证明行动被记录</small></article><article class="stat"><span>可归因增量续费</span><strong>未建立</strong><small>需要成熟观察期和随机对照</small></article><article class="stat"><span>ROI</span><strong>不可判定</strong><small>尚无可验证增量与完整成本</small></article></div>
       <div class="two-col"><div class="card"><h2>家庭级随机分组</h2><p>同一家庭内多个学员不会跨组，分组结果首次生成后保持不变。</p><div id="armBars" class="arm-bars"></div></div><div class="card"><h2>收益归因结论</h2><div class="evidence"><span class="risk-dot"></span><div><strong>NOT ESTABLISHED</strong><p id="attributionNote">缺少成熟实验窗口和真实成本。</p></div></div><p>规则组与AI组必须分别与正常运营对照组比较，并扣除退款和增量履约/营销成本。客户付钱 ≠ AI带来新增付款。</p></div></div>
       <div class="card scenario"><h2>冻结续费观察队列 · 经营事实</h2>
@@ -59,7 +82,7 @@
       <div class="card scenario"><h2>经营回本门槛 · 假设测算</h2><p>这是用于商务讨论的情景计算器，与上方实际流水无关，不是经营效果报告。</p><div class="scenario-grid"><label>平均续费合同额（元）<input id="calcPrice" type="number" min="0" max="100000" value="3000"/></label><label>增量贡献毛利率（%）<input id="calcMargin" type="number" min="1" max="100" value="50"/></label><label>90天完全成本（元）<input id="calcCost" type="number" min="0" max="1000000" value="30000"/></label><label>到期客户数（人）<input id="calcCustomers" type="number" min="1" max="100000" value="500"/></label></div><div class="scenario-result"><div><small>覆盖完全成本需要的增量续费</small><strong id="calcDeals">—</strong></div><div><small>对应净续费率增量</small><strong id="calcUplift">—</strong></div></div></div>
     </section>
     <section id="import" class="page"><div class="two-col"><div class="card"><h2>CSV导入</h2><p>按照固定模板分批导入。按学员→课包→考勤→原有续费/新合同→新现金事件顺序导入。新增合同与付款事件不可改写，重复ID需与原记录一致。</p><div class="import-grid"><label>数据类型<select id="importKind"><option value="learners">1. 学员/家庭</option><option value="packages">2. 课包</option><option value="attendance">3. 考勤</option><option value="renewals">4. 旧版续费记录（独立口径）</option><option value="contracts">5. 新续费合同</option><option value="cash_events">6. 合同付款/退款事件</option></select></label><label>选择CSV文件<input type="file" id="csvFile" accept=".csv,text/csv"/></label></div><button class="button primary" id="upload">导入所选CSV</button><div class="hint" id="importHint">仅支持UTF-8 CSV；单次≤2MB、≤5,000行。导入是按ID更新，不是删除全量数据。</div></div><div class="card"><h2>标准数据字典</h2><p>按右侧模板字段导入，不需要姓名、手机或家长联系方式。</p><div id="schemaText" class="schema"></div><p class="small">使用真实客户数据之前，需要补齐身份认证、访问审计、数据生命周期管理、合法授权和部署安全。当前演示版不适合生产使用。</p></div></div></section>
-    <footer>RenewalOS MVP G0.7 · 合同/资金仅合成模拟 · 禁止公网运行与真实客户数据</footer>
+    <footer>RenewalOS MVP G0.8 · 合同/资金仅合成模拟 · 禁止公网运行与真实客户数据</footer>
   </main>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
