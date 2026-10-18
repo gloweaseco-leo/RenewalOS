@@ -1,4 +1,4 @@
-name: RenewalOS G1-D CI
+name: RenewalOS G1-E CI
 on:
   push:
     branches: [main]
@@ -29,6 +29,7 @@ jobs:
       RENEWAL_PG_MIGRATION_DSN: postgresql://postgres:postgres@127.0.0.1:5432/renewalos_ci
       RENEWAL_PG_TEST_DSN: postgresql://renewalos_ci_app:g1b-ci-test-password@127.0.0.1:5432/renewalos_ci
       RENEWAL_PG_CI_BOOTSTRAP: I_ACCEPT_CI_ONLY
+      RENEWAL_PG_AUTH_DSN: postgresql://renewalos_ci_auth:g1e-ci-auth-test-only@127.0.0.1:5432/renewalos_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,8 +43,14 @@ jobs:
         run: python -m scripts.pg_ci_bootstrap
       - name: Apply G1-C restricted business migration
         run: python -m scripts.pg_apply_g1c --confirm-test-database
+      - name: Apply G1-E identity migration
+        run: python -m scripts.pg_apply_g1e
+      - name: Provision dedicated identity role
+        run: python -m scripts.pg_ci_auth_roles
       - name: Execute SQLite and PostgreSQL regression tests
         run: python -m pytest -q
+      - name: Run real TCP HTTP business E2E
+        run: python -m scripts.http_e2e_g1e
       - name: Validate browser JS syntax
         run: |
           node --check static/app.js
