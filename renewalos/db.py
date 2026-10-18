@@ -45,6 +45,22 @@ CREATE TABLE IF NOT EXISTS experiment_assignments (
  assigned_on TEXT NOT NULL,
  UNIQUE(store_id, family_id)
 );
+CREATE TABLE IF NOT EXISTS work_tasks (
+ task_id TEXT PRIMARY KEY,
+ opportunity_id TEXT NOT NULL UNIQUE REFERENCES opportunities(opportunity_id),
+ store_id TEXT NOT NULL,
+ owner TEXT NOT NULL,
+ due_on TEXT NOT NULL,
+ status TEXT NOT NULL CHECK(status IN ('open','in_progress','waiting','done','cancelled')),
+ created_at TEXT NOT NULL,updated_at TEXT NOT NULL,resolved_at TEXT
+);
+CREATE TABLE IF NOT EXISTS work_task_events (
+ event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+ task_id TEXT NOT NULL REFERENCES work_tasks(task_id),
+ actor TEXT NOT NULL,event_kind TEXT NOT NULL,details TEXT NOT NULL,logged_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_work_tasks_owner_due ON work_tasks(store_id,owner,due_on,status);
+CREATE INDEX IF NOT EXISTS ix_task_event_history ON work_task_events(task_id,event_id);
 CREATE TABLE IF NOT EXISTS followups (
  followup_id INTEGER PRIMARY KEY AUTOINCREMENT,
  opportunity_id TEXT NOT NULL REFERENCES opportunities(opportunity_id),

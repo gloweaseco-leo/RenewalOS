@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-let entries=[], selected=null, aiConfigured=false;
+let entries=[], selected=null, aiConfigured=false, tasks=[], taskSelected=null;
 const todayISO=()=>new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 const eventId=(prefix)=>prefix+'-'+(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2));
 const SCHEMAS={
@@ -15,7 +15,7 @@ const el=(tag, text, cls)=>{const e=document.createElement(tag);if(text!==undefi
 const clear=(node)=>{while(node.firstChild)node.firstChild.remove();};
 function toast(message){$('toast').textContent=message;$('toast').style.display='block';clearTimeout(window._toastTimeout);window._toastTimeout=setTimeout(()=>$('toast').style.display='none',4200);}
 async function call(url,options={}){let response=await fetch(url,options);let data=await response.json().catch(()=>({}));if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'服务暂时不可用');return data;}
-function showView(name){document.querySelectorAll('.page').forEach(n=>n.classList.toggle('visible',n.id===name));document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===name));const conf={opportunities:['续费机会池','把续费机会变成行动','基于事实识别需要关注的客户，辅助员工跟进，记录真实成交。'],insights:['经营验证','衡量真实经营贡献','流水不等于增量价值。没有成熟实验，不声称AI带来收益。'],import:['CSV数据导入','独立的数据接入方式','不依赖奥冠系统；当前只允许导入合法授权的去识别化数据。']}[name];$('viewName').textContent=conf[0];$('pageTitle').textContent=conf[1];$('pageDescription').textContent=conf[2];}
+function showView(name){document.querySelectorAll('.page').forEach(n=>n.classList.toggle('visible',n.id===name));document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===name));const conf={opportunities:['续费机会池','把续费机会变成行动','基于事实识别需要关注的客户，辅助员工跟进，记录真实成交。'],tasks:['销售待办','今日销售任务与结果追踪','任务分配、到期提醒、操作历史与续费合同事实保持关联。'],insights:['经营验证','衡量真实经营贡献','流水不等于增量价值。没有成熟实验，不声称AI带来收益。'],import:['CSV数据导入','独立的数据接入方式','不依赖奥冠系统；当前只允许导入合法授权的去识别化数据。']}[name];$('viewName').textContent=conf[0];$('pageTitle').textContent=conf[1];$('pageDescription').textContent=conf[2];}
 function tag(arm){return arm==='ai'?'AI组':arm==='rules'?'规则组':'对照组';}
 function renderList(){const q=$('search').value.trim().toLowerCase(),arm=$('arm').value,status=$('status').value;let list=entries.filter(r=>(arm==='all'||r.arm===arm)&&(status==='all'||(status==='active'?r.is_active:!r.is_active))&&[r.learner_id,r.guardian_alias,r.course_type].join('|').toLowerCase().includes(q));$('listCount').textContent=list.length;const target=$('opportunityList');clear(target);if(!list.length){target.append(el('div','没有匹配的续费机会。','empty'));return;}
   list.forEach(r=>{const btn=el('button',undefined,'opp-row'+(selected===r.opportunity_id?' selected':''));btn.type='button';const icon=el('div',r.learner_id.slice(-2),'opp-icon');const main=el('div',undefined,'opp-main');main.append(el('strong',r.guardian_alias+' · '+r.learner_id),el('p',r.reason));const meta=el('div',undefined,'opp-meta');meta.append(el('span',r.is_active?'优先级 '+r.priority:'已结束/归档',r.is_active?'score':'tag'),el('span',tag(r.arm),'tag '+r.arm));btn.append(icon,main,meta);btn.addEventListener('click',()=>{selected=r.opportunity_id;renderList();renderDetail();});target.append(btn);});
@@ -48,6 +48,7 @@ function renderDetail(){let r=entries.find(x=>x.opportunity_id===selected);let n
   let submit=el('button','保存跟进记录','button primary');submit.type='submit';submit.className+=' wide';form.append(ownerLabel,statusLabel,noteLabel,submit);
   form.addEventListener('submit',async(e)=>{e.preventDefault();submit.disabled=true;try{await call('/api/followups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({opportunity_id:r.opportunity_id,owner:owner.value,status:sel.value,note:note.value})});toast('跟进记录已保存');await refresh();}catch(x){toast(x.message);}finally{submit.disabled=false;}});
   node.append(form);
+  attachTaskPanel(node,r);
   attachFollowupHistory(node,r);
   attachSalesPanel(node,r);
   attachTimeline(node,r);
@@ -138,7 +139,7 @@ function attachTimeline(node,r){
   }catch(e){toast(e.message);}});
 }
 function renderReport(data){$('netPaid').textContent=fmtMoney(data.net_paid_cny);$('followupEvents').textContent=data.followup_records;$('attributionNote').textContent=data.attribution_note;let holder=$('armBars');clear(holder);const n=Math.max(1,...Object.values(data.arm_family_counts));[['control','正常运营'],['rules','规则辅助'],['ai','AI辅助']].forEach(([arm,name])=>{let line=el('div',undefined,'arm-row');line.append(el('span',name));let track=el('div',undefined,'track');let fill=el('div',undefined,'fill');fill.style.width=(100*data.arm_family_counts[arm]/n)+'%';track.append(fill);line.append(track,el('strong',data.arm_family_counts[arm]+'户'));holder.append(line);});}
-async function refresh(){try{const [data,r,status,cohorts]=await Promise.all([call('/api/opportunities?include_archived=true'),call('/api/report'),call('/api/health'),call('/api/cohorts')]);entries=data.items;aiConfigured=status.ai_configured;const named=aiConfigured?'真实AI已配置':'规则模式（未配置AI）';$('modelStatus').textContent=named;$('statAI').textContent=aiConfigured?'可调用':'未连接';$('statCount').textContent=entries.filter(x=>x.is_active).length;$('statHigh').textContent=entries.filter(x=>x.is_active&&x.priority>=65).length;$('statFollowed').textContent=entries.filter(x=>x.last_status).length;$('modelBenchmark').disabled=!aiConfigured;renderList();renderDetail();renderReport(r);renderCohorts(cohorts.items);}catch(e){toast(e.message);}}
+async function refresh(){try{const [data,r,status,cohorts,queue]=await Promise.all([call('/api/opportunities?include_archived=true'),call('/api/report'),call('/api/health'),call('/api/cohorts'),call('/api/tasks')]);entries=data.items;aiConfigured=status.ai_configured;const named=aiConfigured?'真实AI已配置':'规则模式（未配置AI）';$('modelStatus').textContent=named;$('statAI').textContent=aiConfigured?'可调用':'未连接';$('statCount').textContent=entries.filter(x=>x.is_active).length;$('statHigh').textContent=entries.filter(x=>x.is_active&&x.priority>=65).length;$('statFollowed').textContent=entries.filter(x=>x.last_status).length;$('modelBenchmark').disabled=!aiConfigured;renderList();renderDetail();renderReport(r);renderCohorts(cohorts.items);tasks=queue.items;renderTasks(queue.summary);}catch(e){toast(e.message);}}
 document.querySelectorAll('.nav').forEach(n=>n.addEventListener('click',()=>showView(n.dataset.view)));
 $('loadDemo').addEventListener('click',async()=>{if(entries.length&&!confirm('重新载入合成数据会清空本地当前所有导入和跟进记录，确定继续吗？'))return;try{await call('/api/demo/reset',{method:'POST'});selected=null;toast('已载入36名合成学员，所有数据均为模拟');await refresh();}catch(e){toast(e.message);}});
 $('recompute').addEventListener('click',async()=>{try{const r=await call('/api/recompute',{method:'POST'});toast('重新识别完成，得到'+r.opportunities+'条有效机会');await refresh();}catch(e){toast(e.message);}});
@@ -175,3 +176,102 @@ $('modelBenchmark').addEventListener('click',async()=>{
     $('qualityDetails').textContent='本轮真实模型机器验收：'+r.results.map(x=>x.case_id+': '+(x.accepted?'通过':'拒绝 ('+x.reason+')')).join(' | ')+'。平均延迟：'+(r.average_latency_ms===null?'未知':r.average_latency_ms+'毫秒')+'；Token费用：需在CLI提供模型定价后单独测算；AI效果/ROI：尚未证明。';
   }catch(e){toast(e.message);}finally{btn.disabled=!aiConfigured;}
 });
+
+// G0.7: manager-assigned synthetic work queue. No login identity or auto-outreach.
+const taskStateName={open:'待执行',in_progress:'处理中',waiting:'等待回复',done:'已完成',cancelled:'已取消'};
+const taskDueName={overdue:'逾期',today:'今日',upcoming:'未来',resolved:'已结束'};
+function taskJson(path,method,payload){return call(path,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});}
+function attachTaskPanel(node,r){
+  const panel=el('section',undefined,'sale-panel');
+  panel.append(el('h3','任务分配 · 只用于授权经营跟进'));
+  const holder=el('div',undefined,'task-create-panel');panel.append(holder);node.append(panel);
+  const render=async()=>{
+    try{
+      const data=await call('/api/tasks?store_id='+encodeURIComponent(r.store_id));
+      if(selected!==r.opportunity_id)return;
+      clear(holder);
+      const existing=data.items.find(x=>x.opportunity_id===r.opportunity_id);
+      if(existing){
+        holder.append(el('p','已分配给 '+existing.owner+' · '+existing.due_on+' · '+taskStateName[existing.status],'small'));
+        const btn=el('button','进入销售待办','button light');btn.addEventListener('click',()=>{taskSelected=existing.task_id;showView('tasks');renderTasks();});holder.append(btn);
+        return;
+      }
+      const form=el('form',undefined,'detail-form');
+      const ownerLabel=el('label','责任员工代号'),owner=el('input');owner.required=true;owner.maxLength=50;owner.placeholder='顾问A';ownerLabel.append(owner);
+      const dueLabel=el('label','任务截止日期'),due=el('input');due.type='date';due.required=true;due.value=todayISO();dueLabel.append(due);
+      const noteLabel=el('label','交接说明'),note=el('textarea');note.maxLength=1000;note.rows=2;note.placeholder='仅描述业务行动，不填写联系方式或敏感信息';noteLabel.append(note);
+      const btn=el('button','创建员工跟进任务','button primary');btn.type='submit';btn.className+=' wide';form.append(ownerLabel,dueLabel,noteLabel,btn);
+      form.addEventListener('submit',async ev=>{ev.preventDefault();btn.disabled=true;try{
+        await taskJson('/api/tasks','POST',{opportunity_id:r.opportunity_id,owner:owner.value,due_on:due.value,note:note.value});
+        toast('已分配任务；不代表已经联系客户。');await refresh();
+      }catch(e){toast(e.message);btn.disabled=false;}});
+      holder.append(form);
+    }catch(e){holder.append(el('p','任务信息不可用：'+e.message,'detail-note'));}
+  };render();
+}
+function renderTasks(summary){
+  summary=summary||{open:tasks.filter(x=>['open','in_progress','waiting'].includes(x.status)).length,
+    due_today:tasks.filter(x=>x.due_bucket==='today').length,overdue:tasks.filter(x=>x.due_bucket==='overdue').length,
+    resolved:tasks.filter(x=>x.due_bucket==='resolved').length};
+  const store=$('taskStore').value.trim(), owner=$('taskOwner').value.trim().toLowerCase(),due=$('taskDue').value;
+  const filtered=tasks.filter(t=>(!store||t.store_id===store)&&(!owner||t.owner.toLowerCase()===owner)&&(due==='all'||t.due_bucket===due));
+  const scoped=tasks.filter(t=>(!store||t.store_id===store)&&(!owner||t.owner.toLowerCase()===owner));
+  $('taskStatOpen').textContent=scoped.filter(t=>['open','in_progress','waiting'].includes(t.status)).length;
+  $('taskStatToday').textContent=scoped.filter(t=>t.due_bucket==='today').length;
+  $('taskStatOverdue').textContent=scoped.filter(t=>t.due_bucket==='overdue').length;
+  $('taskStatResolved').textContent=scoped.filter(t=>t.due_bucket==='resolved').length;
+  $('taskListCount').textContent=filtered.length;
+  clear($('taskList'));
+  if(!filtered.length)$('taskList').append(el('div','没有符合条件的员工任务。请先在续费机会详情创建。','empty'));
+  filtered.forEach(t=>{
+    const b=el('button',undefined,'opp-row'+(taskSelected===t.task_id?' selected':''));b.type='button';
+    b.append(el('div',t.due_on.slice(5),'opp-icon'));
+    const label=el('div',undefined,'opp-main');label.append(el('strong',t.guardian_alias+' · '+t.owner),el('p',t.store_id+' · '+t.course_type+' · 截止 '+t.due_on));b.append(label);
+    const tags=el('div',undefined,'opp-meta');tags.append(el('span',taskStateName[t.status],'tag'),el('span',taskDueName[t.due_bucket],'tag'));b.append(tags);
+    b.addEventListener('click',()=>{taskSelected=t.task_id;renderTasks();});$('taskList').append(b);
+  });
+  const active=filtered.find(x=>x.task_id===taskSelected);
+  if(!active)taskSelected=filtered.length?filtered[0].task_id:null;
+  renderTaskDetail(filtered.find(x=>x.task_id===taskSelected));
+}
+function renderTaskDetail(t){
+  const host=$('taskDetail');clear(host);
+  if(!t){host.append(el('div','← 选择任务查看操作','empty large'));return;}
+  host.append(el('div','WORK TASK · '+t.task_id,'detail-eyebrow'));
+  host.append(el('h2',t.guardian_alias+' · '+t.learner_id),el('div','门店 '+t.store_id+' · '+taskStateName[t.status]+' · 截止 '+t.due_on,'detail-subtitle'));
+  host.append(el('p','已登记的模拟净收款：'+fmtMoney(t.net_paid_cny)+'。这不是AI增量收益。','small'));
+  const link=el('button','查看关联续费机会','button light');link.addEventListener('click',()=>{selected=t.opportunity_id;$('status').value='all';showView('opportunities');renderList();renderDetail();});host.append(link);
+  host.append(el('div',undefined,'divider'));
+  const frm=el('form',undefined,'detail-form');
+  const ol=el('label','负责人代号'),o=el('input');o.value=t.owner;o.required=true;o.maxLength=50;ol.append(o);
+  const dl=el('label','截止日期'),d=el('input');d.type='date';d.value=t.due_on;d.required=true;dl.append(d);
+  const sl=el('label','任务状态'),s=el('select');Object.entries(taskStateName).forEach(([v,n])=>{const opt=el('option',n);opt.value=v;s.append(opt);});s.value=t.status;if(['done','cancelled'].includes(t.status)&&!t.is_active)s.disabled=true;sl.append(s);
+  const nl=el('label','变更原因 / 完成结果'),n=el('textarea');n.rows=2;n.maxLength=1000;n.placeholder='任务结束需记录原因，不得填写个人敏感资料';nl.append(n);
+  const btn=el('button','保存任务变更','button primary');btn.type='submit';btn.className+=' wide';if(['done','cancelled'].includes(t.status)&&!t.is_active)btn.disabled=true;
+  frm.append(ol,dl,sl,nl,btn);frm.addEventListener('submit',async e=>{e.preventDefault();btn.disabled=true;try{
+    await taskJson('/api/tasks/'+encodeURIComponent(t.task_id),'PATCH',{actor:t.owner,owner:o.value,due_on:d.value,status:s.value,note:n.value});
+    toast('任务变更已记录，完成任务不等于成交。');await refresh();
+  }catch(err){toast(err.message);btn.disabled=false;}});host.append(frm);
+  if(['open','in_progress','waiting'].includes(t.status)&&t.is_active){
+    host.append(el('div',undefined,'divider'),el('h3','记录实际人工跟进'));
+    const follow=el('form',undefined,'detail-form');const fl=el('label','跟进结果'),sel=el('select');
+    [['planned','计划中'],['contacted','已联系'],['no_response','未响应'],['not_suitable','暂不适合营销'],['closed','已结束']].forEach(([v,n])=>{const opt=el('option',n);opt.value=v;sel.append(opt);});fl.append(sel);
+    const fn=el('label','沟通结果备注'),txt=el('textarea');txt.maxLength=1000;txt.rows=2;fn.append(txt);
+    const b=el('button','保存跟进并同步任务状态','button primary');b.type='submit';b.className+=' wide';follow.append(fl,fn,b);
+    follow.addEventListener('submit',async ev=>{ev.preventDefault();b.disabled=true;try{
+      await taskJson('/api/tasks/'+encodeURIComponent(t.task_id)+'/followups','POST',{actor:t.owner,status:sel.value,note:txt.value});
+      toast('已保存人工跟进和任务状态；不等于销售成果。');await refresh();
+    }catch(err){toast(err.message);b.disabled=false;}});host.append(follow);
+  }else if(!t.is_active && ['open','in_progress','waiting'].includes(t.status)){
+    host.append(el('p','机会已归档，不允许新增营销跟进；请人工核验合同事实并关闭任务。','detail-note'));
+  }
+  host.append(el('div',undefined,'divider'),el('h3','任务操作历史'));
+  const events=el('div',undefined,'event-lines');host.append(events);
+  call('/api/tasks/'+encodeURIComponent(t.task_id)+'/history').then(r=>{
+    if(taskSelected!==t.task_id)return;
+    r.items.forEach(h=>events.append(el('div',h.logged_at+' · '+h.actor+' · '+h.event_kind+(h.details?' · '+h.details:''),'event-line')));
+  }).catch(()=>events.append(el('p','暂时无法读取任务历史。','small')));
+}
+['taskStore','taskOwner'].forEach(id=>$(id).addEventListener('input',()=>renderTasks()));
+$('taskDue').addEventListener('change',()=>renderTasks());
+$('taskReload').addEventListener('click',refresh);
