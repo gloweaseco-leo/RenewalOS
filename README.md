@@ -1,6 +1,6 @@
 # RenewalOS — Sports Training Renewal Operations
 
-**G0.5 independent localhost prototype** · no dependency on Aoguan's unsigned `aoguan-webapp` contract.
+**G0.6 independent localhost prototype** · no dependency on Aoguan's unsigned `aoguan-webapp` contract.
 
 A small working loop: sanitized CSV data → explainable renewal signals → household-level experimental arms → staff-recorded followup → actual net paid facts. It **does not** invent AI uplift/ROI; real model advice only runs with a configured endpoint in the AI arm.
 
@@ -69,3 +69,13 @@ python -m renewalos.benchmark_cli --offline --output-dir benchmark_runs/offline-
 ```
 
 Run a genuine evaluation only when explicitly ready to incur cost; set your own provider's API key and model in the local environment, then follow [G0.5 release instructions](docs/RELEASE_G05.md). To protect blinding, keep the local private answer key away from human raters. All local reports in `benchmark_runs/` are ignored by Git.
+
+## G0.6 — Complete synthetic renewal workbench loop (local development branch)
+
+G0.6 adds the missing *operator-visible* journey: opportunity → followup → contract → simulated payment → archive → refund → reopened opportunity, with an inspectable transaction timeline. UI now supports active / archived / all records. Contracts and cash events can be recorded manually **only as explicitly synthetic facts**; they reuse the immutable G0.3 ledger and reject future events and over-collection. All new APIs remain behind the existing localhost-only boundary. No real payment provider is integrated.
+
+To run the complete walkthrough: start locally; click “载入合成数据”; select a non-control opportunity; record a followup; create a synthetic contract and payment; switch to “已归档” to inspect the closed case and timeline; record refund if desired. Control group can receive normal transaction recording but cannot receive incremental marketing followups.
+
+Run `python -m pytest -q` and `node --check static/app.js`. **DO NOT deploy this branch to Vercel**: there is no authentication, user authorization, real multi-tenant storage, privacy lifecycle or production API gateway. The GitHub production branch is intentionally not changed by this stage.
+
+See `docs/RELEASE_G06.md`.
