@@ -258,10 +258,128 @@ def secured_management(store_id:str,request:Request):
     _secure_membership(request,store_id,{'manager'})
     return manager_snapshot(store_id=store_id)
 
+# G1-C: trusted local bearer -> PostgreSQL tenant scope. These are NOT public APIs.
+# G1-A SQLite stores only local authentication; G1-B PostgreSQL stores business
+# facts. Both membership records must agree; org is additionally checked in PG.
+class PgTaskRequest(BaseModel):
+    opportunity_id: str=Field(min_length=2,max_length=64)
+    task_id: str=Field(min_length=2,max_length=64)
+    assigned_user_id: str=Field(min_length=2,max_length=64)
+    due_on: date
+
+class PgFollowupRequest(BaseModel):
+    opportunity_id: str=Field(min_length=2,max_length=64)
+    followup_id: str=Field(min_length=2,max_length=64)
+    result: str
+    note: str=Field(default='',max_length=1000)
+
+class PgContractRequest(BaseModel):
+    opportunity_id: str=Field(min_length=2,max_length=64)
+    contract_id: str=Field(min_length=2,max_length=64)
+    signed_on: date
+    amount_cents: int=Field(gt=0,le=100000000)
+
+class PgCashRequest(BaseModel):
+    contract_id: str=Field(min_length=2,max_length=64)
+    event_id: str=Field(min_length=2,max_length=64)
+    occurred_on: date
+    kind: str
+    amount_cents: int=Field(gt=0,le=100000000)
+    refund_of: str | None = None
+
+
+def _g1c_scope(request:Request,org_id:str,store_id:str):
+    # Fail closed on unavailable DB; never fallback to SQLite business records.
+    if os.getenv('RENEWAL_RUNTIME_MODE') != 'secure_local':
+        raise HTTPException(404,'接口不存在')
+    from .pg_store import TenantScope,TenantAccessError,tenant_transaction
+    principal=_secure_membership(request,store_id,{'manager','staff'})
+    dsn=os.getenv('RENEWAL_PG_APP_DSN','')
+    if not dsn:
+        raise HTTPException(503,'PostgreSQL尚未配置')
+    try:
+        scope=TenantScope(org_id,store_id,principal['user_id'])
+        with tenant_transaction(dsn,scope) as con:
+            role=con.execute('SELECT renewalos.actor_store_role()').fetchone()[0]
+            if role!=principal['role']:
+                raise TenantAccessError('membership role mismatch')
+        return dsn,scope
+    except (TenantAccessError,ValueError) as exc:
+        raise HTTPException(403,'没有该机构/门店的授权') from exc
+
+
+def _g1c_execute(fn,*args):
+    from .pg_store import TenantAccessError
+    from .pg_business import BusinessConflict,BusinessMissing
+    try:
+        return fn(*args)
+    except TenantAccessError as exc:
+        raise HTTPException(403,'操作权限不足') from exc
+    except BusinessMissing as exc:
+        raise HTTPException(404,'资源不存在或未授权') from exc
+    except BusinessConflict as exc:
+        raise HTTPException(409,str(exc)) from exc
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(422,str(exc)) from exc
+    except Exception as exc:
+        # The DB schema/role might be unavailable or an RLS/constraint may deny
+        # a write. No SQL or resource existence details may reach the client.
+        from .pg_store import _driver
+        pg=_driver()
+        if isinstance(exc,(pg.errors.InsufficientPrivilege,pg.errors.ForeignKeyViolation,
+                            pg.errors.CheckViolation,pg.errors.UniqueViolation)):
+            raise HTTPException(409,'数据库安全或资金约束拒绝该操作') from exc
+        raise
+
+
+@app.get('/api/v1/orgs/{org_id}/stores/{store_id}/opportunities')
+def pg_opportunities(org_id:str,store_id:str,request:Request):
+    from .pg_store import list_store_opportunities
+    dsn,scope=_g1c_scope(request,org_id,store_id)
+    return {'items':_g1c_execute(list_store_opportunities,dsn,scope)}
+
+@app.get('/api/v1/orgs/{org_id}/stores/{store_id}/tasks')
+def pg_tasks(org_id:str,store_id:str,request:Request):
+    from .pg_store import list_assigned_tasks
+    dsn,scope=_g1c_scope(request,org_id,store_id)
+    return {'items':_g1c_execute(list_assigned_tasks,dsn,scope)}
+
+@app.get('/api/v1/orgs/{org_id}/stores/{store_id}/management')
+def pg_manager(org_id:str,store_id:str,request:Request):
+    from .pg_business import manager_snapshot
+    dsn,scope=_g1c_scope(request,org_id,store_id)
+    return _g1c_execute(manager_snapshot,dsn,scope)
+
+@app.post('/api/v1/orgs/{org_id}/stores/{store_id}/tasks')
+def pg_task_create(org_id:str,store_id:str,request:Request,data:PgTaskRequest):
+    from .pg_business import assign_task
+    dsn,scope=_g1c_scope(request,org_id,store_id)
+    return _g1c_execute(assign_task,dsn,scope,data.opportunity_id,data.task_id,data.assigned_user_id,data.due_on)
+
+@app.post('/api/v1/orgs/{org_id}/stores/{store_id}/followups')
+def pg_followup_create(org_id:str,store_id:str,request:Request,data:PgFollowupRequest):
+    from .pg_business import record_followup
+    dsn,scope=_g1c_scope(request,org_id,store_id)
+    return _g1c_execute(record_followup,dsn,scope,data.opportunity_id,data.followup_id,data.result,data.note)
+
+@app.post('/api/v1/orgs/{org_id}/stores/{store_id}/contracts')
+def pg_contract_create(org_id:str,store_id:str,request:Request,data:PgContractRequest):
+    from .pg_business import sign_synthetic_contract
+    dsn,scope=_g1c_scope(request,org_id,store_id)
+    return _g1c_execute(sign_synthetic_contract,dsn,scope,data.opportunity_id,data.contract_id,data.signed_on,data.amount_cents)
+
+@app.post('/api/v1/orgs/{org_id}/stores/{store_id}/cash-events')
+def pg_cash_create(org_id:str,store_id:str,request:Request,data:PgCashRequest):
+    from .pg_business import record_synthetic_cash
+    dsn,scope=_g1c_scope(request,org_id,store_id)
+    return _g1c_execute(record_synthetic_cash,dsn,scope,data.contract_id,data.event_id,
+                        data.kind,data.amount_cents,data.occurred_on,data.refund_of)
+
 @app.get("/api/health")
 def health():
     mode=os.getenv("RENEWAL_RUNTIME_MODE", "demo")
     return {"ok":True,"mode":"SECURE_LOCAL_ALPHA" if mode=="secure_local" else "LOCAL_DEMO",
+            "pg_configured":bool(os.getenv("RENEWAL_PG_APP_DSN")) and mode=="secure_local",
             "ai_configured":all((os.getenv("RENEWAL_AI_BASE_URL"),os.getenv("RENEWAL_AI_API_KEY"),os.getenv("RENEWAL_AI_MODEL")))}
 @app.post("/api/demo/reset")
 def reset():return {"opportunities":load_demo(),"mode":"SYNTHETIC_DEMO"}

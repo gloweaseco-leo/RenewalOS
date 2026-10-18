@@ -110,3 +110,7 @@ scoped read adapter, and CI with isolated PostgreSQL service are under
 `migrations/postgres/`, `renewalos/pg_store.py`, `tests/test_g1b_postgres.py`.
 See `docs/RELEASE_G1B.md`. Legacy `secure_local` remains SQLite-only, localhost-only;
 no real customer data and no production cloud deployment.
+
+## G1-C (development branch) — PostgreSQL authenticated business writes
+
+See [G1-C release/limits](docs/RELEASE_G1C.md). New local-only `/api/v1/orgs/{org}/stores/{store}/` endpoints support manager task assignment, assigned-staff followup, synthetic contract and append-only payment/refund, and manager reporting. Requires `RENEWAL_RUNTIME_MODE=secure_local` plus `RENEWAL_PG_APP_DSN` and **matching** store roles in G1-A local auth and PostgreSQL. 002 migration is tested only on disposable CI database. No real data or public hosting.

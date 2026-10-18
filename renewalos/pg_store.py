@@ -49,8 +49,11 @@ def tenant_transaction(dsn: str, scope: TenantScope, *, roles=("manager", "staff
             conn.execute("SELECT set_config('renewalos.store_id', %s, true)", (scope.store_id,))
             conn.execute("SELECT set_config('renewalos.actor_id', %s, true)", (scope.user_id,))
             membership = conn.execute('''
-                SELECT role FROM renewalos.store_memberships
-                WHERE org_id=%s AND store_id=%s AND user_id=%s AND enabled
+                SELECT sm.role FROM renewalos.store_memberships sm
+                JOIN renewalos.org_memberships om ON om.org_id=sm.org_id AND om.user_id=sm.user_id
+                JOIN renewalos.identity_users u ON u.user_id=sm.user_id
+                WHERE sm.org_id=%s AND sm.store_id=%s AND sm.user_id=%s
+                  AND sm.enabled AND om.enabled AND u.enabled
             ''', (scope.org_id,scope.store_id,scope.user_id)).fetchone()
             if membership is None or membership[0] not in roles:
                 raise TenantAccessError("not authorized for this store")
