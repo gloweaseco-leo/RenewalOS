@@ -83,8 +83,21 @@ def run():
         assert otp_page.status_code == 200 and 'name="otp"' in otp_page.text, 'Keycloak OTP form not available (no second factor)' 
         otp_form=LoginForm();otp_form.feed(otp_page.text)
         assert otp_form.action and otp_form.action.startswith(ISSUER+'/login-actions/'), 'OTP form action not found'
-        otp_response=browser.post(otp_form.action,data={'otp':totp()},follow_redirects=False)
-        assert otp_response.status_code in (302,303), 'Keycloak OTP form submission failed'
+        class FormInputs(html.parser.HTMLParser):
+            def __init__(self):
+                super().__init__();self.hidden={};self.names=[]
+            def handle_starttag(self,tag,attrs):
+                if tag!='input':return
+                v=dict(attrs);name=v.get('name')
+                if name:self.names.append(name)
+                if v.get('type')=='hidden' and name and name not in ('otp','password'):
+                    self.hidden[name]=v.get('value','')
+        fields=FormInputs();fields.feed(otp_page.text)
+        otp_response=browser.post(otp_form.action,data={**fields.hidden,'otp':totp()},follow_redirects=False)
+        if otp_response.status_code not in (302,303):
+            # Only form FIELD NAMES and HTTP status, NEVER credentials, codes, URL query or cookie.
+            raise AssertionError('Keycloak OTP rejected (status='+str(otp_response.status_code)+
+                                 ', form_fields='+','.join(sorted(set(fields.names)))+')')
         params=_callback(otp_response.headers.get('location',''),cfg)
         state=params['state'][0]
         assert state==parse_qs(urlsplit(url).query)['state'][0], 'state altered by provider'
