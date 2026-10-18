@@ -95,14 +95,9 @@ def assign_task(dsn, scope:TenantScope, opportunity_id, task_id, assignee_id, du
                 return {'task_id':task_id,'created':False}
             raise BusinessConflict('this opportunity already has a task; no silent reassignment')
         _assert_contactable(opp)
-        member=con.execute('''SELECT 1 FROM renewalos.store_memberships sm
-             JOIN renewalos.org_memberships om ON om.org_id=sm.org_id AND om.user_id=sm.user_id
-             JOIN renewalos.identity_users u ON u.user_id=sm.user_id
-             WHERE sm.org_id=%s AND sm.store_id=%s AND sm.user_id=%s
-               AND sm.enabled AND om.enabled AND u.enabled
-               AND sm.role IN ('staff','manager')''',
-             (scope.org_id,scope.store_id,assignee_id)).fetchone()
-        if member is None:
+        member=con.execute('SELECT renewalos.is_active_store_member(%s)',
+                           (assignee_id,)).fetchone()
+        if member is None or not member[0]:
             raise TenantAccessError('assignee is not an enabled store member')
         con.execute('''INSERT INTO renewalos.work_tasks
            (org_id,store_id,task_id,opportunity_id,assigned_user_id,due_on)
