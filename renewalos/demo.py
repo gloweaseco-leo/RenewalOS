@@ -6,7 +6,7 @@ from .core import recompute
 def load_demo(path=None,today=None):
     today=today or date.today()
     with connect(path) as con:
-        for table in ("cash_events","renewal_contracts","renewal_cohort_members","cohorts","ai_advice","followups","opportunities","experiment_assignments","renewals","attendance","packages","learners"):
+        for table in ("ai_advice_reviews","ai_advice_attempts","cash_events","renewal_contracts","renewal_cohort_members","cohorts","ai_advice","followups","opportunities","experiment_assignments","renewals","attendance","packages","learners"):
             con.execute(f"DELETE FROM {table}")
         for i in range(1,37):
             learner=f"L{i:03d}"; pkg=f"PK{i:03d}"; family=f"F{((i-1)//2)+1:03d}"
