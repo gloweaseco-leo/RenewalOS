@@ -1,4 +1,4 @@
-name: RenewalOS G0.5 CI
+name: RenewalOS G1-A CI
 on:
   push:
     branches: [main]
@@ -22,4 +22,6 @@ jobs:
       - name: Execute regression tests
         run: python -m pytest -q
       - name: Validate browser JS syntax
-        run: node --check static/app.js
+        run: |
+          node --check static/app.js
+          node --check static/secure.js
