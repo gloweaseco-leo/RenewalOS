@@ -274,7 +274,7 @@ def oidc_start():
         raise HTTPException(503,str(exc)) from exc
     response=JSONResponse({'authorization_url':url},headers={'Cache-Control':'no-store'})
     response.set_cookie('renewal_oidc_csrf',cookie,httponly=True,samesite='lax',
-                        secure=False,path='/',max_age=300)
+                        secure=OIDCConfig.from_env().redirect_uri.startswith('https://'),path='/',max_age=300)
     return response
 
 
@@ -288,7 +288,7 @@ def oidc_complete(data:OIDCComplete,request:Request):
     except (OIDCRejected,AccessDenied) as exc:
         raise HTTPException(401,'外部身份未验证或未授权') from exc
     response=JSONResponse(result,headers={'Cache-Control':'no-store'})
-    response.delete_cookie('renewal_oidc_csrf',path='/')
+    response.delete_cookie('renewal_oidc_csrf',path='/',secure=OIDCConfig.from_env().redirect_uri.startswith('https://'),httponly=True,samesite='lax')
     return response
 
 
