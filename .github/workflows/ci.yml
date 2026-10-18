@@ -1,4 +1,4 @@
-name: RenewalOS G0.4 CI
+name: RenewalOS G0.5 CI
 on:
   push:
     branches: [main]
