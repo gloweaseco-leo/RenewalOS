@@ -148,3 +148,9 @@ G1-G新增生产部署强制NO-GO、双最小权限PG连接校验、`/api/ready`
 GitHub CI以一次性Keycloak容器执行真正的HTTPS授权码交换，**纯密码认证无MFA被拒绝**。
 参见 `docs/RELEASE_G1I.md`、`deploy/preprod/README.md`。
 现有`release_gate`的生产/预发NO-GO不可放宽。
+
+## G1-J (draft): MFA acceptance and irreversible revocation
+
+- `migrations/postgres/005_session_revocation.sql`: all prior sessions revoked on identity, role, membership or OIDC binding changes.
+- `scripts/keycloak_mfa_g1j.py`: isolated real Keycloak password+TOTP positive flow, never a production credential.
+- **No public or client production deployment**. See `docs/RELEASE_G1J.md`.

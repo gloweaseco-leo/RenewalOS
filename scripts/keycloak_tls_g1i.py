@@ -43,7 +43,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):self._forward()
     def log_message(self,fmt,*args):pass  # Do not log OAuth code, cookies or tokens
     def _forward(self):
-        if len(self.path)>4096 or not self.path.startswith('/realms/'):
+        # CI-only Keycloak configuration needs access to its test realm's
+        # authenticator metadata, not to account, client or identity admin APIs.
+        # This allowlist is a narrow exception for the disposable 18443 proxy.
+        path=self.path.split('?',1)[0]
+        auth_config_prefix='/admin/realms/renewalos-ci/authentication/'
+        is_public=path.startswith('/realms/')
+        is_auth_config=(path.startswith(auth_config_prefix) and
+                        (path==auth_config_prefix+'flows' or
+                         (path.startswith(auth_config_prefix+'flows/') and
+                          path.endswith('/executions')) or
+                         (path.startswith(auth_config_prefix+'executions/') and
+                          path.endswith('/config'))))
+        if len(self.path)>4096 or not (is_public or is_auth_config):
             self.send_error(404);return
         length=int(self.headers.get('content-length','0'))
         if length>131072:
