@@ -1,6 +1,6 @@
 # RenewalOS — Sports Training Renewal Operations
 
-**G0.4 independent localhost prototype** · no dependency on Aoguan's unsigned `aoguan-webapp` contract.
+**G0.5 independent localhost prototype** · no dependency on Aoguan's unsigned `aoguan-webapp` contract.
 
 A small working loop: sanitized CSV data → explainable renewal signals → household-level experimental arms → staff-recorded followup → actual net paid facts. It **does not** invent AI uplift/ROI; real model advice only runs with a configured endpoint in the AI arm.
 
@@ -57,3 +57,15 @@ Read `docs/RELEASE_G03.md` (current delivery), `docs/ARCHITECTURE.md`, and `docs
 - Suggestions become stale when source signals change. Original audit attempts and review decisions are retained; pre-G0.4 unvalidated model drafts are suppressed.
 
 **No real AI model was called during included automated tests.** Tests use explicit stubs. The 12/12 synthetic baseline pass rate does not establish model superiority, outreach effect, or ROI. See `docs/RELEASE_G04.md` and `docs/HUMAN_EVAL_PROTOCOL.md`.
+
+## G0.5 — Real-model comparison, no manufactured AI scores
+
+G0.5 adds a 12-case frozen synthetic suite, provider-token and latency measurement, explicitly priced cost estimate, human A/B blind-review artifacts and independent reviewer score validation. Existing G0.4 opportunity operations remain unchanged, aside from benchmark telemetry. **No real API credentials were available for the included test run**, so its 56 passing tests and 12/12 rules baseline do not say anything about actual model performance or renewal profitability.
+
+Try without API access:
+
+```bash
+python -m renewalos.benchmark_cli --offline --output-dir benchmark_runs/offline-demo
+```
+
+Run a genuine evaluation only when explicitly ready to incur cost; set your own provider's API key and model in the local environment, then follow [G0.5 release instructions](docs/RELEASE_G05.md). To protect blinding, keep the local private answer key away from human raters. All local reports in `benchmark_runs/` are ignored by Git.
