@@ -100,6 +100,13 @@ jobs:
           SSL_CERT_FILE: /tmp/renewalos-g1i-cert/cert.pem
           NO_PROXY: 127.0.0.1,localhost
         run: python -m scripts.keycloak_real_g1i
+      - name: Configure native Keycloak OTP authentication-method reference
+        if: matrix.python-version == '3.11'
+        timeout-minutes: 3
+        env:
+          SSL_CERT_FILE: /tmp/renewalos-g1i-cert/cert.pem
+          NO_PROXY: 127.0.0.1,localhost
+        run: python -m scripts.keycloak_amr_setup_g1j
       - name: G1-J Keycloak real MFA positive acceptance
         if: matrix.python-version == '3.11'
         timeout-minutes: 4

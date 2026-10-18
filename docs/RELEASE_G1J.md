@@ -6,9 +6,10 @@
 
 1. `005_session_revocation.sql`：正式用户状态、机构/门店授权状态、角色、OIDC绑定变更会永久撤销该用户之前的**全部**会话。即便稍后重新启用授权，旧令牌仍无效；重新登录才能获得新会话。写入由受限触发器在同一事务中完成。
 2. `tests/test_g1j_revocation.py`：真实 PostgreSQL 16 测试四种撤权及恢复场景，证明 `revoked_at` 已持久化；无需信赖UI隐藏按钮。
-3. Keycloak合成OTP账号：仅CI使用的公开、不可复用测试TOTP种子，以Keycloak自有OTP认证器完成密码+OTP认证，令牌来源是独立IdP而非合成JWT。
-4. `scripts/keycloak_mfa_g1j.py`：真实授权码 + PKCE + Keycloak HTTPS端点；调用应用自己的 `complete()` 完成RS256签名、Nonce、Audience、MFA属性与预绑定用户校验，完成真实本地授权会话、退出与重放拦截。未满足认证事实的Token仍会失败。
-5. CI先执行PostgreSQL 005迁移和测试，再验证原有G1-F浏览器业务、G1-G恢复演练、G1-I单因素拒绝，最后执行G1-J正向MFA验收。禁止将真实账户、真实TOTP种子或个人信息放入GitHub日志。
+3. Keycloak原生OTP执行器配置 `default.reference.value=otp`，完成OTP后再由Keycloak内建AMR mapper写入令牌；禁止在用户属性或应用代码中硬编码MFA声明。
+4. Keycloak合成OTP账号：仅CI使用的公开、不可复用测试TOTP种子，以Keycloak自有OTP认证器完成密码+OTP认证，令牌来源是独立IdP而非合成JWT。
+5. `scripts/keycloak_mfa_g1j.py`：真实授权码 + PKCE + Keycloak HTTPS端点；调用应用自己的 `complete()` 完成RS256签名、Nonce、Audience、MFA属性与预绑定用户校验，完成真实本地授权会话、退出与重放拦截。未满足认证事实的Token仍会失败。
+6. CI先执行PostgreSQL 005迁移和测试，再验证原有G1-F浏览器业务、G1-G恢复演练、G1-I单因素拒绝，最后执行G1-J正向MFA验收。禁止将真实账户、真实TOTP种子或个人信息放入GitHub日志。
 
 ## 尚未放行的事项
 
