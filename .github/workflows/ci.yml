@@ -1,4 +1,4 @@
-name: RenewalOS G1-G release & recovery gate CI
+name: RenewalOS G1-I IdP interoperability & release safety CI
 on:
   push:
     branches: [main]
@@ -77,6 +77,27 @@ jobs:
       - name: G1-G disposable PostgreSQL backup and restore rehearsal
         if: matrix.python-version == '3.11'
         run: python -m scripts.backup_restore_g1g
+      - name: Start disposable Keycloak OIDC authority (no real users)
+        if: matrix.python-version == '3.11'
+        timeout-minutes: 8
+        run: |
+          docker run --rm -d --name renewalos-g1i-idp \
+            -p 127.0.0.1:18080:8080 -m 1536m \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=synthetic-admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=Only-In-Disposable-CI \
+            -e KC_HOSTNAME=https://127.0.0.1:18443 \
+            -e KC_PROXY_HEADERS=xforwarded -e KC_HTTP_ENABLED=true \
+            -v "$PWD/tests/fixtures/g1i_keycloak:/opt/keycloak/data/import:ro" \
+            quay.io/keycloak/keycloak:26.8.0 start-dev --import-realm
+          python -m scripts.keycloak_tls_g1i prepare
+          nohup python -m scripts.keycloak_tls_g1i serve >/tmp/renewalos-idp-proxy.log 2>&1 &
+      - name: G1-I real Keycloak HTTPS PKCE interoperability and MFA rejection
+        if: matrix.python-version == '3.11'
+        timeout-minutes: 4
+        env:
+          SSL_CERT_FILE: /tmp/renewalos-g1i-cert/cert.pem
+          NO_PROXY: 127.0.0.1,localhost
+        run: python -m scripts.keycloak_real_g1i
       - name: Validate browser JS syntax
         run: |
           node --check static/app.js
