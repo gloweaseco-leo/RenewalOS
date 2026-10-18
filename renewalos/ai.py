@@ -1,6 +1,7 @@
 """Optional real LLM adapter. Explicit structured output, minimized business signals."""
 import json
 import os
+import time
 import urllib.request
 from urllib.parse import urlparse
 from .quality import canonical_signals, AdviceRejected
@@ -24,7 +25,7 @@ SYSTEM_PROMPT = """你是体育培训机构的内部客户服务辅助员。只�
 不输出代码块或对象外文本。"""
 
 
-def suggest(signals: dict, course_type: str):
+def suggest_with_telemetry(signals: dict, course_type: str):
     base=os.getenv('RENEWAL_AI_BASE_URL','').strip().rstrip('/')
     key=os.getenv('RENEWAL_AI_API_KEY','').strip()
     model=os.getenv('RENEWAL_AI_MODEL','').strip()
@@ -44,6 +45,7 @@ def suggest(signals: dict, course_type: str):
         'temperature':0.1,'max_tokens':350}
     req=urllib.request.Request(base+'/chat/completions',data=json.dumps(body,ensure_ascii=False).encode('utf-8'),
          headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
+    start=time.perf_counter()
     try:
         # An invalid response is a rejected proposal, not a reason to display raw model text.
         with urllib.request.urlopen(req,timeout=12) as response:
@@ -56,9 +58,23 @@ def suggest(signals: dict, course_type: str):
         if not isinstance(content,str): raise AIUnavailable('模型没有返回结构化文本')
         proposal=json.loads(content)
         if not isinstance(proposal,dict): raise AIUnavailable('模型没有返回JSON对象')
-        return proposal,model
+        # Usage is provider-reported; absent fields remain unknown, never imputed.
+        usage=data.get('usage') if isinstance(data.get('usage'),dict) else {}
+        def token_count(field):
+            v=usage.get(field)
+            return v if type(v) is int and v >= 0 else None
+        return proposal,model,{'latency_ms':round((time.perf_counter()-start)*1000,2),
+                               'prompt_tokens':token_count('prompt_tokens'),
+                               'completion_tokens':token_count('completion_tokens'),
+                               'usage_source':'provider' if usage else 'unavailable'}
     except AIUnavailable: raise
     except (ValueError,KeyError,IndexError,TypeError) as exc:
         raise AIUnavailable('模型返回了无效的结构化数据，已拒绝展示。') from exc
     except Exception as exc:
         raise AIUnavailable('模型请求失败，保持规则模式。') from exc
+
+
+def suggest(signals: dict, course_type: str):
+    """Backwards-compatible interface for the interactive advice workflow."""
+    proposal, model, _ = suggest_with_telemetry(signals, course_type)
+    return proposal, model
