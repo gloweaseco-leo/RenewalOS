@@ -91,6 +91,6 @@ $('modelBenchmark').addEventListener('click',async()=>{
   const btn=$('modelBenchmark');btn.disabled=true;
   try{const r=await call('/api/quality/benchmark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_cases:4})});
     $('qualityModel').textContent=r.machine_passed+'/'+r.cases;
-    $('qualityDetails').textContent=r.results.map(x=>x.case_id+': '+(x.accepted?'通过':'拒绝 ('+x.reason+')')).join(' | ')+'。'+r.disclaimer;
+    $('qualityDetails').textContent='本轮真实模型机器验收：'+r.results.map(x=>x.case_id+': '+(x.accepted?'通过':'拒绝 ('+x.reason+')')).join(' | ')+'。平均延迟：'+(r.average_latency_ms===null?'未知':r.average_latency_ms+'毫秒')+'；Token费用：需在CLI提供模型定价后单独测算；AI效果/ROI：尚未证明。';
   }catch(e){toast(e.message);}finally{btn.disabled=!aiConfigured;}
 });
