@@ -52,7 +52,12 @@ def login(dsn,user,password):
 
 
 def _actor(con,token):
-    row=con.execute('SELECT user_id FROM renewalos_auth.sessions WHERE token_hash=%s AND revoked_at IS NULL AND expires_at>now()',(digest(token),)).fetchone()
+    row=con.execute('''SELECT s.user_id FROM renewalos_auth.sessions s
+        WHERE s.token_hash=%s AND s.revoked_at IS NULL AND s.expires_at>now()
+          AND (s.oidc_issuer IS NULL OR EXISTS (
+            SELECT 1 FROM renewalos_auth.oidc_bindings b
+            WHERE b.issuer=s.oidc_issuer AND b.subject=s.oidc_subject
+              AND b.user_id=s.user_id AND b.enabled))''',(digest(token),)).fetchone()
     if not row:raise AccessDenied('未认证')
     allowed=memberships(con,row[0])
     if not allowed:raise AccessDenied('未认证')

@@ -1,3 +1,5 @@
+> G1-J: OIDC binding revocation now invalidates active sessions. See `docs/RELEASE_G1J.md`. Production remains NO-GO.
+
 ## G1-E · PostgreSQL 统一身份（本地开发）
 
 身份凭据、会话和机构/门店授权现在可全部保存在 PostgreSQL，不再依赖本机 SQLite。
