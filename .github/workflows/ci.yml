@@ -1,4 +1,4 @@
-name: RenewalOS G1-F browser acceptance CI
+name: RenewalOS G1-G release & recovery gate CI
 on:
   push:
     branches: [main]
@@ -67,6 +67,14 @@ jobs:
           path: browser_artifacts/failure.png
           if-no-files-found: ignore
           retention-days: 3
+      - name: G1-G local release NO-GO audit
+        run: |
+          RENEWAL_RUNTIME_MODE=secure_local RENEWAL_AUTH_BACKEND=postgres \
+          RENEWAL_PG_APP_DSN="$RENEWAL_PG_TEST_DSN" \
+          python -m scripts.release_audit_g1g
+      - name: G1-G disposable PostgreSQL backup and restore rehearsal
+        if: matrix.python-version == '3.11'
+        run: python -m scripts.backup_restore_g1g
       - name: Validate browser JS syntax
         run: |
           node --check static/app.js
